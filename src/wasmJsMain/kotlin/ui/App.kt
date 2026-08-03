@@ -64,8 +64,11 @@ val paletteStyles = listOf(
     "Neutral" to PaletteStyle.Neutral,
 )
 
+private fun basePath(): String =
+    kotlinx.browser.window.location.pathname.substringBeforeLast("/", "").removeSuffix("/")
+
 private fun getPageFromUrl(): Page {
-    val path = kotlinx.browser.window.location.pathname.lowercase().trim('/')
+    val path = kotlinx.browser.window.location.pathname.removePrefix(basePath()).trim('/').lowercase()
     return when {
         path == "download" -> Page.DOWNLOAD
         path == "features" -> Page.FEATURES
@@ -74,10 +77,11 @@ private fun getPageFromUrl(): Page {
 }
 
 private fun updateUrlForPage(page: Page) {
+    val base = basePath()
     val targetPath = when (page) {
-        Page.HOME -> "/"
-        Page.FEATURES -> "/features"
-        Page.DOWNLOAD -> "/download"
+        Page.HOME -> "$base/"
+        Page.FEATURES -> "$base/features"
+        Page.DOWNLOAD -> "$base/download"
     }
     val currentPath = kotlinx.browser.window.location.pathname
     if (currentPath != targetPath) {

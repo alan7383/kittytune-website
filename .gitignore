@@ -13,6 +13,7 @@ kotlin-js-store/
 *.log
 *.png
 !src/main/resources/icons/*.png
+!src/wasmJsMain/resources/media/*.png
 *.wav
 *.py
 *.ps1
