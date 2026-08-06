@@ -39,8 +39,10 @@ jobs:
       - name: Build Web App
         run: ./gradlew wasmJsBrowserDistribution --no-daemon
 
-      - name: Copy Google verification file to site root
-        run: cp google64c8159730b14ee1.html build/dist/wasmJs/productionExecutable/
+      - name: Copy Google verification file and SPA 404 fallback to site root
+        run: |
+          cp google64c8159730b14ee1.html build/dist/wasmJs/productionExecutable/
+          cp 404.html build/dist/wasmJs/productionExecutable/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
