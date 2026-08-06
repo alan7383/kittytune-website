@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KittyTune</title>
+    <script>
+        // GitHub Pages serves this file (HTTP 404) for unknown paths. Since the
+        // app is a SPA using history.pushState, a refresh on /features or
+        // /download would otherwise 404. Save the requested path, load the real
+        // index.html, and let the app restore the URL via history.replaceState.
+        (function () {
+            var base = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
+            var path = window.location.pathname + window.location.search + window.location.hash;
+            try {
+                window.sessionStorage.setItem('kittytune_redirect', path);
+            } catch (e) {
+            }
+            window.location.replace(base + 'index.html');
+        })();
+    </script>
+</head>
+<body>
+    <script>
+        var base = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
+        document.write('<a href="' + base + '">Go to KittyTune</a>');
+    </script>
+</body>
+</html>

@@ -68,6 +68,11 @@ private fun basePath(): String =
     kotlinx.browser.window.location.pathname.substringBeforeLast("/", "").removeSuffix("/")
 
 private fun getPageFromUrl(): Page {
+    val savedPath = kotlinx.browser.window.sessionStorage.getItem("kittytune_redirect")
+    if (savedPath != null) {
+        kotlinx.browser.window.sessionStorage.removeItem("kittytune_redirect")
+        kotlinx.browser.window.history.replaceState(null, "", savedPath)
+    }
     val path = kotlinx.browser.window.location.pathname.removePrefix(basePath()).trim('/').lowercase()
     return when {
         path == "download" -> Page.DOWNLOAD
