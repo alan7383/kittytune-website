@@ -172,7 +172,14 @@ fun DownloadPage() {
 
 @Composable
 private fun AmneziaStyleDownloadSelector(modifier: Modifier = Modifier) {
-    var selectedPlatform by remember { mutableStateOf(platforms.first()) }
+    val sortedPlatforms = remember {
+        var osName = "Windows"
+        getOsJs { osName = it }
+        val detected = platforms.find { it.name == osName } ?: platforms.first()
+        val others = platforms.filter { it != detected }
+        listOf(detected) + others
+    }
+    var selectedPlatform by remember { mutableStateOf(sortedPlatforms.first()) }
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -188,7 +195,7 @@ private fun AmneziaStyleDownloadSelector(modifier: Modifier = Modifier) {
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                platforms.forEach { platform ->
+                sortedPlatforms.forEach { platform ->
                     val isSelected = platform == selectedPlatform
                     val borderColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
                     val bgColor = if (isSelected) MaterialTheme.colorScheme.surfaceContainerHighest else Color.Transparent
@@ -500,6 +507,17 @@ private fun fetchGithubReleaseJs(repo: String, onSuccess: (String, String, Strin
                 }
             })
             .catch(e => console.error(e));
+    """)
+}
+
+private fun getOsJs(onResult: (String) -> Unit) {
+    js("""
+        let ua = window.navigator.userAgent;
+        if (/android/i.test(ua)) { onResult("Android"); }
+        else if (/Win/i.test(ua)) { onResult("Windows"); }
+        else if (/Mac/i.test(ua)) { onResult("macOS"); }
+        else if (/Linux/i.test(ua)) { onResult("Linux"); }
+        else { onResult("Windows"); }
     """)
 }
 
