@@ -362,13 +362,27 @@ private fun KofiBanner(modifier: Modifier = Modifier) {
             verticalArrangement = Arrangement.Center,
             modifier = Modifier.padding(36.dp)
         ) {
-            Text(
-                text = "Support KittyTune \u2615",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Black,
-                color = MaterialTheme.colorScheme.onSurface,
-                textAlign = TextAlign.Center
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "Support KittyTune",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center
+                )
+                Box(modifier = Modifier.size(28.dp)) {
+                    HtmlImage(
+                        src = "svg/kofi_symbol.svg",
+                        description = "Coffee",
+                        corner = 0.dp,
+                        fit = MediaFit.Contain,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
             Spacer(Modifier.height(16.dp))
             Text(
                 text = "This project is entirely free and open-source. If you enjoy my work, please consider supporting its development by buying me a coffee on Ko-fi!",
@@ -387,9 +401,15 @@ private fun KofiBanner(modifier: Modifier = Modifier) {
                 ),
                 contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp)
             ) {
-                Icon(Icons.Filled.Favorite, contentDescription = null, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(10.dp))
-                Text("Ko-fi", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Box(modifier = Modifier.height(20.dp).width(74.dp)) {
+                    HtmlImage(
+                        src = "svg/kofi_logo.svg",
+                        description = "Ko-fi",
+                        corner = 0.dp,
+                        fit = MediaFit.Contain,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
             }
         }
     }
