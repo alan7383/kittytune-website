@@ -26,8 +26,8 @@ import kittytunewebsite.generated.resources.Res
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalTextApi::class)
 @Composable
 fun KittyTuneWebTheme(
-    seedColor: Color = Color(0xFF1976D2),
-    paletteStyle: PaletteStyle = PaletteStyle.Vibrant,
+    seedColor: Color = Color(0xFF283593),
+    paletteStyle: PaletteStyle = PaletteStyle.Expressive,
     content: @Composable () -> Unit
 ) {
     val colorScheme = rememberDynamicColorScheme(
