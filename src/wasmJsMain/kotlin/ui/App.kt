@@ -102,14 +102,14 @@ fun App() {
         mutableStateOf(
             kotlinx.browser.localStorage.getItem("theme_color")?.let { savedName ->
                 colorPresets.find { it.name == savedName }
-            } ?: colorPresets[0]
+            } ?: colorPresets.find { it.name == "Indigo" } ?: colorPresets[0]
         ) 
     }
     var selectedStyle by remember { 
         mutableStateOf(
             kotlinx.browser.localStorage.getItem("theme_style")?.let { savedName ->
                 paletteStyles.find { it.first == savedName }
-            } ?: paletteStyles.find { it.first == "Monochrome" } ?: paletteStyles[0]
+            } ?: paletteStyles.find { it.first == "Expressive" } ?: paletteStyles[0]
         ) 
     }
     var showThemePanel by remember { mutableStateOf(false) }
