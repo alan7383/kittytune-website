@@ -31,13 +31,33 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: 'gradle'
+
+      - name: Cache Gradle wrapper & caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/wrapper
+            ~/.gradle/caches
+          key: gradle-${{ runner.os }}-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts', 'gradle.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Cache Kotlin/Wasm toolchain (Node, Yarn, Binaryen)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.konan
+            kotlin-js-store
+            build/kotlinTooling
+          key: kotlin-wasm-toolchain-${{ runner.os }}-${{ hashFiles('kotlin-js-store/wasm/yarn.lock') }}
+          restore-keys: kotlin-wasm-toolchain-${{ runner.os }}-
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
+        with:
+          cache-disabled: true   # we handle caching above
 
       - name: Build Web App
-        run: ./gradlew wasmJsBrowserDistribution --no-daemon
+        run: ./gradlew wasmJsBrowserDistribution --no-daemon --configuration-cache
 
       - name: Copy Google verification file and SPA 404 fallback to site root
         run: |
