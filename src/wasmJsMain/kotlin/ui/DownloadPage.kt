@@ -26,19 +26,26 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.Button
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SplitButtonDefaults
+import androidx.compose.material3.SplitButtonLayout
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -96,7 +103,13 @@ private val platforms = listOf(
         svgUrl = "svg/android.svg",
         packageLabel = "APK",
         repo = "alan7383/kittytune",
-        downloadOptions = listOf("Direct APK" to ".apk"),
+        // (label, asset name contains) — primary first
+        downloadOptions = listOf(
+            "arm64-v8a (recommended)" to "arm64-v8a",
+            "armeabi-v7a (32-bit)"    to "armeabi-v7a",
+            "Universal"               to "universal",
+            "x86_64"                  to "x86_64"
+        ),
         details = "For Android 8.0+"
     ),
     PlatformInfo(
@@ -259,7 +272,9 @@ private fun AmneziaStyleDownloadSelector(modifier: Modifier = Modifier) {
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         DownloadButton(selectedPlatform, isGithub)
-                        AlternativeDownloads(selectedPlatform)
+                        if (selectedPlatform.name != "Android") {
+                            AlternativeDownloads(selectedPlatform)
+                        }
                         Text(
                             text = selectedPlatform.details,
                             style = MaterialTheme.typography.bodyLarge,
@@ -284,7 +299,9 @@ private fun AmneziaStyleDownloadSelector(modifier: Modifier = Modifier) {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        AlternativeDownloads(selectedPlatform)
+                        if (selectedPlatform.name != "Android") {
+                            AlternativeDownloads(selectedPlatform)
+                        }
                     }
                 }
             }
@@ -294,12 +311,16 @@ private fun AmneziaStyleDownloadSelector(modifier: Modifier = Modifier) {
 
 @Composable
 private fun DownloadButton(platform: PlatformInfo, isGithub: Boolean) {
+    if (!isGithub && platform.name == "Android") {
+        AndroidSplitDownloadButton(platform)
+        return
+    }
     Button(
         onClick = {
             if (isGithub) {
                 openUrlJs("https://github.com/${platform.repo}")
             } else {
-                downloadLatestReleaseJs(platform.repo, platform.downloadOptions.first().second)
+                downloadLatestStableApkByNameJs(platform.repo, platform.downloadOptions.first().second)
             }
         },
         shapes = ButtonDefaults.shapes(),
@@ -317,6 +338,90 @@ private fun DownloadButton(platform: PlatformInfo, isGithub: Boolean) {
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold
         )
+    }
+}
+
+@Composable
+private fun AndroidSplitDownloadButton(platform: PlatformInfo) {
+    val primaryOption = platform.downloadOptions.first()
+    val otherOptions = platform.downloadOptions.drop(1)
+    var expanded by remember { mutableStateOf(false) }
+
+    Box {
+        SplitButtonLayout(
+            leadingButton = {
+                SplitButtonDefaults.LeadingButton(
+                    onClick = {
+                        downloadLatestStableApkByNameJs(platform.repo, primaryOption.second)
+                    },
+                    modifier = Modifier.height(58.dp),
+                    shapes = SplitButtonDefaults.leadingButtonShapesFor(58.dp),
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Download,
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = "Download APK",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            trailingButton = {
+                SplitButtonDefaults.TrailingButton(
+                    checked = expanded,
+                    onCheckedChange = { expanded = it },
+                    modifier = Modifier.height(58.dp),
+                    shapes = SplitButtonDefaults.trailingButtonShapesFor(58.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp),
+                ) {
+                    val rotation by animateFloatAsState(
+                        targetValue = if (expanded) 180f else 0f,
+                        label = "chevron rotation"
+                    )
+                    Icon(
+                        imageVector = Icons.Default.ArrowDropDown,
+                        contentDescription = "Other APK variants",
+                        modifier = Modifier
+                            .size(24.dp)
+                            .graphicsLayer { rotationZ = rotation }
+                    )
+                }
+            }
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            // Header label
+            Text(
+                text = "Other APK variants",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+            otherOptions.forEach { (label, nameContains) ->
+                DropdownMenuItem(
+                    text = { Text(label, style = MaterialTheme.typography.bodyMedium) },
+                    onClick = {
+                        expanded = false
+                        downloadLatestStableApkByNameJs(platform.repo, nameContains)
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Download,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                )
+            }
+        }
     }
 }
 
@@ -556,7 +661,7 @@ private fun downloadLatestReleaseJs(repo: String, ext: String) {
                 if (url) {
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = ''; 
+                    a.download = '';
                     document.body.appendChild(a);
                     a.click();
                     document.body.removeChild(a);
@@ -566,6 +671,37 @@ private fun downloadLatestReleaseJs(repo: String, ext: String) {
             })
             .catch(e => {
                 window.open('https://github.com/' + repo + '/releases/latest', '_blank');
+            });
+    """)
+}
+
+// Fetches the first non-prerelease, non-draft release and downloads the asset
+// whose filename contains `nameContains`. Used for Android APKs so we can
+// distinguish arm64-v8a / armeabi-v7a / universal / x86_64 by name substring.
+private fun downloadLatestStableApkByNameJs(repo: String, nameContains: String) {
+    js("""
+        fetch('https://api.github.com/repos/' + repo + '/releases?per_page=10')
+            .then(res => res.json())
+            .then(releases => {
+                const stable = releases.find(r => !r.prerelease && !r.draft);
+                if (!stable) {
+                    window.open('https://github.com/' + repo + '/releases', '_blank');
+                    return;
+                }
+                const asset = (stable.assets || []).find(a => a.name.includes(nameContains));
+                if (asset) {
+                    const a = document.createElement('a');
+                    a.href = asset.browser_download_url;
+                    a.download = '';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                } else {
+                    window.open('https://github.com/' + repo + '/releases/tag/' + stable.tag_name, '_blank');
+                }
+            })
+            .catch(e => {
+                window.open('https://github.com/' + repo + '/releases', '_blank');
             });
     """)
 }
