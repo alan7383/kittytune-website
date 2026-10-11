@@ -443,14 +443,97 @@ private fun AlternativeDownloads(platform: PlatformInfo) {
                 modifier = Modifier.horizontalScroll(rememberScrollState())
             ) {
                 platform.downloadOptions.drop(1).forEach { (label, ext) ->
-                    TextButton(
-                        onClick = { downloadLatestReleaseJs(platform.repo, ext) },
-                        shapes = ButtonDefaults.shapes()
-                    ) {
-                        Text(label)
+                    if (platform.name == "Linux") {
+                        LinuxAlternativeDownloadButton(platform.repo, label, ext)
+                    } else {
+                        TextButton(
+                            onClick = { downloadLatestReleaseJs(platform.repo, ext) },
+                            shapes = ButtonDefaults.shapes()
+                        ) {
+                            Text(label)
+                        }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun LinuxAlternativeDownloadButton(repo: String, label: String, ext: String) {
+    var expanded by remember { mutableStateOf(false) }
+    val rotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        label = "chevron rotation"
+    )
+    val detectedArch = remember {
+        var arch = "x86"
+        getDetectedArchJs { arch = it }
+        arch
+    }
+    val isArm = detectedArch == "arm"
+
+    val x86Title = if (ext == ".deb") "x86_64 (amd64)" else "x86_64"
+    val armTitle = if (ext == ".deb") "ARM64 (arm64)" else "ARM64 (aarch64)"
+
+    val x86Text = if (!isArm) "$x86Title (recommended)" else x86Title
+    val armText = if (isArm) "$armTitle (recommended)" else armTitle
+
+    Box {
+        TextButton(
+            onClick = { expanded = true },
+            shapes = ButtonDefaults.shapes()
+        ) {
+            Text(label)
+            Spacer(Modifier.width(4.dp))
+            Icon(
+                imageVector = Icons.Default.ArrowDropDown,
+                contentDescription = "Select architecture for $label",
+                modifier = Modifier
+                    .size(20.dp)
+                    .graphicsLayer { rotationZ = rotation }
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            Text(
+                text = "Select architecture",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+            )
+            DropdownMenuItem(
+                text = { Text(x86Text, style = MaterialTheme.typography.bodyMedium) },
+                onClick = {
+                    expanded = false
+                    downloadLinuxReleaseJs(repo, ext, "x86_64")
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Download,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            )
+            DropdownMenuItem(
+                text = { Text(armText, style = MaterialTheme.typography.bodyMedium) },
+                onClick = {
+                    expanded = false
+                    downloadLinuxReleaseJs(repo, ext, "arm64")
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Download,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            )
         }
     }
 }
@@ -646,6 +729,50 @@ private fun getOsJs(onResult: (String) -> Unit) {
     """)
 }
 
+private fun getDetectedArchJs(onResult: (String) -> Unit) {
+    js("""
+        let ua = (window.navigator.userAgent || '').toLowerCase();
+        let isArm = ua.includes('arm') || ua.includes('aarch64');
+        onResult(isArm ? "arm" : "x86");
+    """)
+}
+
+private fun downloadLinuxReleaseJs(repo: String, ext: String, arch: String) {
+    js("""
+        fetch('https://api.github.com/repos/' + repo + '/releases/latest')
+            .then(res => res.json())
+            .then(data => {
+                let url = null;
+                if (data.assets && data.assets.length > 0) {
+                    let targetArch = '';
+                    if (arch === 'arm64' || arch === 'aarch64') {
+                        targetArch = (ext === '.deb') ? 'arm64' : 'aarch64';
+                    } else {
+                        targetArch = (ext === '.deb') ? 'amd64' : 'x86_64';
+                    }
+                    const asset = data.assets.find(a => a.name.endsWith(ext) && a.name.includes(targetArch))
+                               || data.assets.find(a => a.name.endsWith(ext));
+                    if (asset) {
+                        url = asset.browser_download_url;
+                    }
+                }
+                if (url) {
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = '';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                } else {
+                    window.open('https://github.com/' + repo + '/releases/latest', '_blank');
+                }
+            })
+            .catch(e => {
+                window.open('https://github.com/' + repo + '/releases/latest', '_blank');
+            });
+    """)
+}
+
 private fun downloadLatestReleaseJs(repo: String, ext: String) {
     js("""
         fetch('https://api.github.com/repos/' + repo + '/releases/latest')
@@ -653,7 +780,12 @@ private fun downloadLatestReleaseJs(repo: String, ext: String) {
             .then(data => {
                 let url = null;
                 if (data.assets && data.assets.length > 0) {
-                    const asset = data.assets.find(a => a.name.endsWith(ext));
+                    let ua = (window.navigator.userAgent || '').toLowerCase();
+                    let isArm = ua.includes('arm') || ua.includes('aarch64');
+                    let targetArch = isArm ? (ext === '.deb' ? 'arm64' : 'aarch64') : (ext === '.deb' ? 'amd64' : 'x86_64');
+
+                    const asset = data.assets.find(a => a.name.endsWith(ext) && a.name.includes(targetArch))
+                               || data.assets.find(a => a.name.endsWith(ext));
                     if (asset) {
                         url = asset.browser_download_url;
                     }
