@@ -27,10 +27,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -45,12 +49,16 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.graphicsLayer
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -94,7 +102,7 @@ private val platforms = listOf(
             "AppImage (Portable)" to ".AppImage",
             "Debian / Ubuntu (.deb)" to ".deb",
             "Fedora / openSUSE (.rpm)" to ".rpm",
-            "Arch Linux (.pkg.tar.zst)" to ".pkg.tar.zst"
+            "Arch Linux (AUR & Pacman)" to ".pkg.tar.zst"
         ),
         details = "Portable binary for Linux (x86_64)"
     ),
@@ -442,15 +450,17 @@ private fun AlternativeDownloads(platform: PlatformInfo) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.horizontalScroll(rememberScrollState())
             ) {
-                platform.downloadOptions.drop(1).forEach { (label, ext) ->
-                    if (platform.name == "Linux") {
-                        LinuxAlternativeDownloadButton(platform.repo, label, ext)
-                    } else {
-                        TextButton(
-                            onClick = { downloadLatestReleaseJs(platform.repo, ext) },
-                            shapes = ButtonDefaults.shapes()
-                        ) {
-                            Text(label)
+                key(platform.name) {
+                    platform.downloadOptions.drop(1).forEach { (label, ext) ->
+                        if (platform.name == "Linux") {
+                            LinuxAlternativeDownloadButton(platform.repo, label, ext)
+                        } else {
+                            TextButton(
+                                onClick = { downloadLatestReleaseJs(platform.repo, ext) },
+                                shapes = ButtonDefaults.shapes()
+                            ) {
+                                Text(label)
+                            }
                         }
                     }
                 }
@@ -462,6 +472,22 @@ private fun AlternativeDownloads(platform: PlatformInfo) {
 @Composable
 private fun LinuxAlternativeDownloadButton(repo: String, label: String, ext: String) {
     var expanded by remember { mutableStateOf(false) }
+    var copiedYay by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    DisposableEffect(Unit) {
+        onDispose {
+            expanded = false
+        }
+    }
+
+    LaunchedEffect(copiedYay) {
+        if (copiedYay) {
+            delay(2500)
+            copiedYay = false
+        }
+    }
+
     val rotation by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
         label = "chevron rotation"
@@ -473,22 +499,49 @@ private fun LinuxAlternativeDownloadButton(repo: String, label: String, ext: Str
     }
     val isArm = detectedArch == "arm"
 
+    val distroSvg = when (ext) {
+        ".deb" -> "svg/ubuntu.svg"
+        ".rpm" -> "svg/fedora.svg"
+        ".pkg.tar.zst" -> "svg/archlinux.svg"
+        else -> null
+    }
+
     val x86Title = if (ext == ".deb") "x86_64 (amd64)" else "x86_64"
     val armTitle = if (ext == ".deb") "ARM64 (arm64)" else "ARM64 (aarch64)"
 
     val x86Text = if (!isArm) "$x86Title (recommended)" else x86Title
     val armText = if (isArm) "$armTitle (recommended)" else armTitle
 
+    fun dismissMenu() {
+        scope.launch {
+            delay(16)
+            expanded = false
+        }
+    }
+
     Box {
         TextButton(
             onClick = { expanded = true },
             shapes = ButtonDefaults.shapes()
         ) {
+            if (distroSvg != null) {
+                Box(modifier = Modifier.size(18.dp)) {
+                    HtmlImage(
+                        src = distroSvg,
+                        description = label,
+                        corner = 0.dp,
+                        fit = MediaFit.Contain,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    Spacer(Modifier.fillMaxSize().background(Color.Transparent))
+                }
+                Spacer(Modifier.width(8.dp))
+            }
             Text(label)
             Spacer(Modifier.width(4.dp))
             Icon(
                 imageVector = Icons.Default.ArrowDropDown,
-                contentDescription = "Select architecture for $label",
+                contentDescription = "Options for $label",
                 modifier = Modifier
                     .size(20.dp)
                     .graphicsLayer { rotationZ = rotation }
@@ -498,42 +551,137 @@ private fun LinuxAlternativeDownloadButton(repo: String, label: String, ext: Str
             expanded = expanded,
             onDismissRequest = { expanded = false }
         ) {
-            Text(
-                text = "Select architecture",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-            )
-            DropdownMenuItem(
-                text = { Text(x86Text, style = MaterialTheme.typography.bodyMedium) },
-                onClick = {
-                    expanded = false
-                    downloadLinuxReleaseJs(repo, ext, "x86_64")
-                },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Download,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            )
-            DropdownMenuItem(
-                text = { Text(armText, style = MaterialTheme.typography.bodyMedium) },
-                onClick = {
-                    expanded = false
-                    downloadLinuxReleaseJs(repo, ext, "arm64")
-                },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Download,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            )
+            if (ext == ".pkg.tar.zst") {
+                Text(
+                    text = "AUR (Recommended)",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                )
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(
+                                "yay -S kitty-tune-bin",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                if (copiedYay) "Copied to clipboard!" else "Click to copy command",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (copiedYay) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    },
+                    onClick = {
+                        copyToClipboardJs("yay -S kitty-tune-bin")
+                        copiedYay = true
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = if (copiedYay) Icons.Default.Check else Icons.Default.ContentCopy,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = if (copiedYay) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                )
+                DropdownMenuItem(
+                    text = {
+                        Text("View AUR package", style = MaterialTheme.typography.bodyMedium)
+                    },
+                    onClick = {
+                        dismissMenu()
+                        openUrlJs("https://aur.archlinux.org/packages/kitty-tune-bin?all_deps=1")
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
+                Text(
+                    text = "Pacman package (.pkg.tar.zst)",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                )
+                DropdownMenuItem(
+                    text = { Text(x86Text, style = MaterialTheme.typography.bodyMedium) },
+                    onClick = {
+                        dismissMenu()
+                        downloadLinuxReleaseJs(repo, ext, "x86_64")
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Download,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text(armText, style = MaterialTheme.typography.bodyMedium) },
+                    onClick = {
+                        dismissMenu()
+                        downloadLinuxReleaseJs(repo, ext, "arm64")
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Download,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                )
+            } else {
+                Text(
+                    text = if (ext == ".deb") "Select architecture (.deb)" else "Select architecture (.rpm)",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                )
+                DropdownMenuItem(
+                    text = { Text(x86Text, style = MaterialTheme.typography.bodyMedium) },
+                    onClick = {
+                        dismissMenu()
+                        downloadLinuxReleaseJs(repo, ext, "x86_64")
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Download,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text(armText, style = MaterialTheme.typography.bodyMedium) },
+                    onClick = {
+                        dismissMenu()
+                        downloadLinuxReleaseJs(repo, ext, "arm64")
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Download,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                )
+            }
         }
     }
 }
@@ -734,6 +882,23 @@ private fun getDetectedArchJs(onResult: (String) -> Unit) {
         let ua = (window.navigator.userAgent || '').toLowerCase();
         let isArm = ua.includes('arm') || ua.includes('aarch64');
         onResult(isArm ? "arm" : "x86");
+    """)
+}
+
+private fun copyToClipboardJs(text: String) {
+    js("""
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text);
+        } else {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        }
     """)
 }
 

@@ -4,6 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KittyTune - Open Source Music Player</title>
+    <script>
+        window.addEventListener('error', function(e) {
+            if (e && e.message && e.message.includes('RootNodeOwner is already disposed')) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                return true;
+            }
+        }, true);
+    </script>
     <style>
         body, html {
             margin: 0;
