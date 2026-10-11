@@ -653,7 +653,15 @@ private fun downloadLatestReleaseJs(repo: String, ext: String) {
             .then(data => {
                 let url = null;
                 if (data.assets && data.assets.length > 0) {
-                    const asset = data.assets.find(a => a.name.endsWith(ext));
+                    // check if arm or x86
+                    let ua = window.navigator.userAgent.toLowerCase();
+                    let isArm = ua.includes('arm') || ua.includes('aarch64');
+                    let arch = isArm ? (ext === '.deb' ? 'arm64' : 'aarch64') : (ext === '.deb' ? 'amd64' : 'x86_64');
+
+                    // find matching arch+ext, or just ext for windows
+                    const asset = data.assets.find(a => a.name.endsWith(ext) && a.name.includes(arch))
+                               || data.assets.find(a => a.name.endsWith(ext));
+
                     if (asset) {
                         url = asset.browser_download_url;
                     }
