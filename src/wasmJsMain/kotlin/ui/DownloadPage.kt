@@ -102,9 +102,10 @@ private val platforms = listOf(
             "AppImage (Portable)" to ".AppImage",
             "Debian / Ubuntu (.deb)" to ".deb",
             "Fedora / openSUSE (.rpm)" to ".rpm",
-            "Arch Linux (AUR & Pacman)" to ".pkg.tar.zst"
+            "Arch Linux (AUR & Pacman)" to ".pkg.tar.zst",
+            "NixOS (Flake & Package)" to "nixos"
         ),
-        details = "Portable binary for Linux (x86_64)"
+        details = "Portable binary for Linux (x86_64 & ARM64)"
     ),
     PlatformInfo(
         name = "Android",
@@ -125,7 +126,10 @@ private val platforms = listOf(
         svgUrl = "svg/finder-svgrepo-com.svg",
         packageLabel = "DMG",
         repo = "alan7383/KittyTuneDesktop",
-        downloadOptions = listOf("Apple Silicon / Intel (.dmg)" to ".dmg"),
+        downloadOptions = listOf(
+            "Apple Silicon (.dmg)" to "-arm64.dmg",
+            "Intel Mac (.dmg)" to "-x64.dmg"
+        ),
         details = "For macOS Apple Silicon & Intel"
     ),
     PlatformInfo(
@@ -323,6 +327,10 @@ private fun DownloadButton(platform: PlatformInfo, isGithub: Boolean) {
         AndroidSplitDownloadButton(platform)
         return
     }
+    if (!isGithub && platform.name == "macOS") {
+        MacSplitDownloadButton(platform)
+        return
+    }
     Button(
         onClick = {
             if (isGithub) {
@@ -434,6 +442,111 @@ private fun AndroidSplitDownloadButton(platform: PlatformInfo) {
 }
 
 @Composable
+private fun MacSplitDownloadButton(platform: PlatformInfo) {
+    val detectedArch = remember {
+        var arch = "arm"
+        getDetectedArchJs { arch = it }
+        arch
+    }
+    val isArm = detectedArch == "arm"
+    val primaryOption = if (isArm) platform.downloadOptions.first() else platform.downloadOptions[1]
+    val otherOptions = if (isArm) listOf(platform.downloadOptions[1]) else listOf(platform.downloadOptions.first())
+    var expanded by remember { mutableStateOf(false) }
+
+    Box {
+        SplitButtonLayout(
+            leadingButton = {
+                SplitButtonDefaults.LeadingButton(
+                    onClick = {
+                        downloadLatestStableApkByNameJs(platform.repo, primaryOption.second)
+                    },
+                    modifier = Modifier.height(58.dp),
+                    shapes = SplitButtonDefaults.leadingButtonShapesFor(58.dp),
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Download,
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = "Download DMG",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = if (isArm) "Apple Silicon (M1/M2/M3/M4)" else "Intel Mac (x64)",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
+                        )
+                    }
+                }
+            },
+            trailingButton = {
+                SplitButtonDefaults.TrailingButton(
+                    checked = expanded,
+                    onCheckedChange = { expanded = it },
+                    modifier = Modifier.height(58.dp),
+                    shapes = SplitButtonDefaults.trailingButtonShapesFor(58.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp),
+                ) {
+                    val rotation by animateFloatAsState(
+                        targetValue = if (expanded) 180f else 0f,
+                        label = "chevron rotation"
+                    )
+                    Icon(
+                        imageVector = Icons.Default.ArrowDropDown,
+                        contentDescription = "Other Mac architectures",
+                        modifier = Modifier
+                            .size(24.dp)
+                            .graphicsLayer { rotationZ = rotation }
+                    )
+                }
+            }
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            Text(
+                text = "Select architecture (.dmg)",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+            platform.downloadOptions.forEach { (label, nameContains) ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                if (nameContains.contains("arm64")) "Apple Silicon (M1, M2, M3, M4, ...)" else "Intel processors (x86_64)",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    },
+                    onClick = {
+                        expanded = false
+                        downloadLatestStableApkByNameJs(platform.repo, nameContains)
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Download,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun AlternativeDownloads(platform: PlatformInfo) {
     if (platform.downloadOptions.size > 1) {
         Row(
@@ -454,6 +567,13 @@ private fun AlternativeDownloads(platform: PlatformInfo) {
                     platform.downloadOptions.drop(1).forEach { (label, ext) ->
                         if (platform.name == "Linux") {
                             LinuxAlternativeDownloadButton(platform.repo, label, ext)
+                        } else if (platform.name == "macOS") {
+                            TextButton(
+                                onClick = { downloadLatestStableApkByNameJs(platform.repo, ext) },
+                                shapes = ButtonDefaults.shapes()
+                            ) {
+                                Text(label)
+                            }
                         } else {
                             TextButton(
                                 onClick = { downloadLatestReleaseJs(platform.repo, ext) },
@@ -473,6 +593,8 @@ private fun AlternativeDownloads(platform: PlatformInfo) {
 private fun LinuxAlternativeDownloadButton(repo: String, label: String, ext: String) {
     var expanded by remember { mutableStateOf(false) }
     var copiedYay by remember { mutableStateOf(false) }
+    var copiedNixRun by remember { mutableStateOf(false) }
+    var copiedNixInput by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     DisposableEffect(Unit) {
@@ -481,10 +603,12 @@ private fun LinuxAlternativeDownloadButton(repo: String, label: String, ext: Str
         }
     }
 
-    LaunchedEffect(copiedYay) {
-        if (copiedYay) {
+    LaunchedEffect(copiedYay, copiedNixRun, copiedNixInput) {
+        if (copiedYay || copiedNixRun || copiedNixInput) {
             delay(2500)
             copiedYay = false
+            copiedNixRun = false
+            copiedNixInput = false
         }
     }
 
@@ -503,6 +627,7 @@ private fun LinuxAlternativeDownloadButton(repo: String, label: String, ext: Str
         ".deb" -> "svg/ubuntu.svg"
         ".rpm" -> "svg/fedora.svg"
         ".pkg.tar.zst" -> "svg/archlinux.svg"
+        "nixos" -> "svg/nixos.svg"
         else -> null
     }
 
@@ -638,6 +763,97 @@ private fun LinuxAlternativeDownloadButton(repo: String, label: String, ext: Str
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.Download,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                )
+            } else if (ext == "nixos") {
+                Text(
+                    text = "Nix Flake (Run directly)",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                )
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(
+                                "nix run github:alan7383/KittyTuneDesktop",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                if (copiedNixRun) "Copied to clipboard!" else "Click to copy command",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (copiedNixRun) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    },
+                    onClick = {
+                        copyToClipboardJs("nix run github:alan7383/KittyTuneDesktop")
+                        copiedNixRun = true
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = if (copiedNixRun) Icons.Default.Check else Icons.Default.ContentCopy,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = if (copiedNixRun) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
+                Text(
+                    text = "NixOS & Home Manager Configuration",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                )
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(
+                                "inputs.kittytune.url = \"github:alan7383/KittyTuneDesktop\";",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                if (copiedNixInput) "Copied to clipboard!" else "Click to copy Flake input",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (copiedNixInput) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    },
+                    onClick = {
+                        copyToClipboardJs("inputs.kittytune.url = \"github:alan7383/KittyTuneDesktop\";")
+                        copiedNixInput = true
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = if (copiedNixInput) Icons.Default.Check else Icons.Default.ContentCopy,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = if (copiedNixInput) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                )
+                DropdownMenuItem(
+                    text = {
+                        Text("View Flake on GitHub", style = MaterialTheme.typography.bodyMedium)
+                    },
+                    onClick = {
+                        dismissMenu()
+                        openUrlJs("https://github.com/alan7383/KittyTuneDesktop/blob/master/flake.nix")
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -881,6 +1097,17 @@ private fun getDetectedArchJs(onResult: (String) -> Unit) {
     js("""
         let ua = (window.navigator.userAgent || '').toLowerCase();
         let isArm = ua.includes('arm') || ua.includes('aarch64');
+        try {
+            let canvas = document.createElement('canvas');
+            let gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+            if (gl) {
+                let debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+                if (debugInfo) {
+                    let renderer = (gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) || '').toLowerCase();
+                    if (renderer.includes('apple')) isArm = true;
+                }
+            }
+        } catch (e) {}
         onResult(isArm ? "arm" : "x86");
     """)
 }
