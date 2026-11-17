@@ -34,7 +34,7 @@ import com.alananasss.kittytunewebsite.ui.theme.KittyTuneWebTheme
 import com.materialkolor.PaletteStyle
 
 enum class Page {
-    HOME, FEATURES, DOWNLOAD
+    HOME, FEATURES, TOGETHER, DOWNLOAD
 }
 
 data class ColorPreset(val name: String, val color: Color)
@@ -67,36 +67,54 @@ val paletteStyles = listOf(
 private fun basePath(): String =
     kotlinx.browser.window.location.pathname.substringBeforeLast("/", "").removeSuffix("/")
 
-private fun getPageFromUrl(): Page {
+private fun restoreRedirectIfPresent() {
     val savedPath = kotlinx.browser.window.sessionStorage.getItem("kittytune_redirect")
     if (savedPath != null) {
         kotlinx.browser.window.sessionStorage.removeItem("kittytune_redirect")
         kotlinx.browser.window.history.replaceState(null, "", savedPath)
     }
+}
+
+private fun getTogetherCodeFromUrl(): String? {
+    restoreRedirectIfPresent()
+    val full = kotlinx.browser.window.location.pathname + kotlinx.browser.window.location.search + kotlinx.browser.window.location.hash
+    return TogetherWebLinks.extractCodeFromUrl(full)
+}
+
+private fun getPageFromUrl(): Page {
+    restoreRedirectIfPresent()
+    if (getTogetherCodeFromUrl() != null) return Page.TOGETHER
     val path = kotlinx.browser.window.location.pathname.removePrefix(basePath()).trim('/').lowercase()
     return when {
         path == "download" -> Page.DOWNLOAD
         path == "features" -> Page.FEATURES
+        path == "together" || path == "listen" || path.startsWith("together/") || path.startsWith("listen/") -> Page.TOGETHER
         else -> Page.HOME
     }
 }
 
-private fun updateUrlForPage(page: Page) {
+private fun updateUrlForPage(page: Page, togetherCode: String?) {
     val base = basePath()
-    val targetPath = when (page) {
+    val targetUrl = when (page) {
         Page.HOME -> "$base/"
         Page.FEATURES -> "$base/features"
+        Page.TOGETHER -> if (!togetherCode.isNullOrBlank()) {
+            "$base/?together=${TogetherWebLinks.displayCode(togetherCode)}"
+        } else {
+            "$base/together"
+        }
         Page.DOWNLOAD -> "$base/download"
     }
-    val currentPath = kotlinx.browser.window.location.pathname
-    if (currentPath != targetPath) {
-        kotlinx.browser.window.history.pushState(null, "", targetPath)
+    val currentUrl = kotlinx.browser.window.location.pathname + kotlinx.browser.window.location.search
+    if (currentUrl != targetUrl) {
+        kotlinx.browser.window.history.pushState(null, "", targetUrl)
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun App() {
+    var activeTogetherCode by remember { mutableStateOf(getTogetherCodeFromUrl()) }
     var currentPage by remember { mutableStateOf(getPageFromUrl()) }
     var selectedColor by remember { 
         mutableStateOf(
@@ -133,16 +151,17 @@ fun App() {
         """.trimIndent()
         kotlinx.browser.document.head?.appendChild(style)
 
-        kotlinx.coroutines.delay(1200)
+        kotlinx.coroutines.delay(if (activeTogetherCode != null) 350L else 1200L)
         isAppLoaded = true
     }
 
-    LaunchedEffect(currentPage) {
-        updateUrlForPage(currentPage)
+    LaunchedEffect(currentPage, activeTogetherCode) {
+        updateUrlForPage(currentPage, activeTogetherCode)
     }
 
     DisposableEffect(Unit) {
         val listener: (org.w3c.dom.events.Event) -> Unit = {
+            activeTogetherCode = getTogetherCodeFromUrl()
             currentPage = getPageFromUrl()
         }
         kotlinx.browser.window.addEventListener("popstate", listener)
@@ -220,6 +239,12 @@ fun App() {
                                 label = { Text("Features") }
                             )
                             NavigationBarItem(
+                                selected = currentPage == Page.TOGETHER,
+                                onClick = { currentPage = Page.TOGETHER },
+                                icon = { Icon(Icons.Filled.Headphones, contentDescription = "Together") },
+                                label = { Text("Together") }
+                            )
+                            NavigationBarItem(
                                 selected = currentPage == Page.DOWNLOAD,
                                 onClick = { currentPage = Page.DOWNLOAD },
                                 icon = { Icon(Icons.Filled.Download, contentDescription = "Download") },
@@ -258,6 +283,7 @@ fun App() {
                                 if (!isMobile) {
                                     NavBarItem("Home", currentPage == Page.HOME) { currentPage = Page.HOME }
                                     NavBarItem("Features", currentPage == Page.FEATURES) { currentPage = Page.FEATURES }
+                                    NavBarItem("Together", currentPage == Page.TOGETHER) { currentPage = Page.TOGETHER }
                                     NavBarItem("Download", currentPage == Page.DOWNLOAD) { currentPage = Page.DOWNLOAD }
 
                                     Spacer(modifier = Modifier.width(8.dp))
@@ -302,6 +328,14 @@ fun App() {
                             when (page) {
                                 Page.HOME -> HomePage { currentPage = Page.DOWNLOAD }
                                 Page.FEATURES -> FeaturesPage()
+                                Page.TOGETHER -> ListenAlongPage(
+                                    activeCode = activeTogetherCode,
+                                    onCodeSelected = { code ->
+                                        activeTogetherCode = code
+                                        currentPage = Page.TOGETHER
+                                    },
+                                    onDownloadClick = { currentPage = Page.DOWNLOAD },
+                                )
                                 Page.DOWNLOAD -> DownloadPage()
                             }
                         }
