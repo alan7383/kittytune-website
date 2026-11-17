@@ -48,7 +48,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DesktopWindows
@@ -421,9 +420,7 @@ fun ListenAlongPage(
                                 verticalArrangement = Arrangement.spacedBy(2.dp),
                             ) {
                                 tracksToShow.take(16).forEachIndexed { index, track ->
-                                    WebExpressiveGroupRow(
-                                        onClick = track.permalinkUrl?.let { url -> { openExternalUrlJs(url) } },
-                                    ) {
+                                    WebExpressiveGroupRow {
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
@@ -624,9 +621,9 @@ fun ListenAlongPage(
                                 icon = Icons.Filled.DesktopWindows,
                                 title = "KittyTune Desktop",
                                 subtitle = if (isFr) {
-                                    "Sur Windows, Linux ou macOS : ouvrez KittyTune → onglet Together → collez le code de la session pour écouter en rythme."
+                                    "Sur Windows, Linux ou macOS : cliquez sur « Ouvrir KittyTune » ci-dessus pour lancer directement l'application sur la session, ou collez le code dans l'onglet Together."
                                 } else {
-                                    "On Windows, Linux, or macOS: open KittyTune → Together tab → paste the session code to listen in lockstep."
+                                    "On Windows, Linux, or macOS: click 'Open KittyTune' above to launch the desktop app directly into the session, or paste the code in the Together tab."
                                 },
                                 actionLabel = if (isFr) "Télécharger pour PC / Mac / Linux" else "Download for Desktop",
                                 onAction = onDownloadClick,
@@ -796,9 +793,9 @@ private fun InvitePromptColumn(
                     Spacer(Modifier.width(10.dp))
                     Text(
                         text = if (!hostName.isNullOrBlank()) {
-                            if (isFr) "Écouter avec $hostName · Rejoindre" else "Listen with $hostName · Join Session"
+                            if (isFr) "Écouter avec $hostName · Ouvrir KittyTune" else "Listen with $hostName · Open KittyTune"
                         } else {
-                            if (isFr) "Écouter et rejoindre la session" else "Listen Along · Join Session"
+                            if (isFr) "Écouter et ouvrir KittyTune" else "Listen Along · Open KittyTune"
                         },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.ExtraBold,
@@ -813,23 +810,38 @@ private fun InvitePromptColumn(
                     exit = fadeOut() + shrinkVertically(),
                 ) {
                     Surface(
-                        shape = RoundedCornerShape(18.dp),
+                        shape = RoundedCornerShape(20.dp),
                         color = cs.secondaryContainer,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Column(
-                            modifier = Modifier.padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             Text(
                                 text = if (isFr) {
-                                    "Ouverture de KittyTune… Sur ordinateur ou si l'application n'est pas encore installée, copiez le code $formattedCode dans KittyTune → Together ou téléchargez l'application gratuitement."
+                                    "Cliquez sur « Ouvrir » dans la fenêtre de votre navigateur pour lancer KittyTune (Android ou PC/Mac/Linux) et rejoindre la session automatiquement. Vous n'avez pas encore KittyTune ?"
                                 } else {
-                                    "Launching KittyTune… On Desktop or if you don't have the app installed yet, paste code $formattedCode inside KittyTune → Together, or download KittyTune free below."
+                                    "Click 'Open' in your browser's prompt to launch KittyTune (Android or Desktop) and join the live session automatically. Don't have KittyTune installed yet?"
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = cs.onSecondaryContainer,
                             )
+                            Button(
+                                onClick = onDownloadClick,
+                                shapes = ButtonDefaults.shapes(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(46.dp),
+                            ) {
+                                Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = if (isFr) "Télécharger l'application KittyTune" else "Download KittyTune App",
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                )
+                            }
                         }
                     }
                 }
@@ -1090,26 +1102,6 @@ private fun LivePlayerShowcaseCard(
                                 durationMs = track.durationMs,
                                 isPlaying = session.isPlaying,
                             )
-                        }
-
-                        track.permalinkUrl?.takeIf { it.startsWith("http") }?.let { extUrl ->
-                            FilledTonalButton(
-                                onClick = { openExternalUrlJs(extUrl) },
-                                shapes = ButtonDefaults.shapes(),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(44.dp),
-                            ) {
-                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    text = if (isFr) "Voir le morceau sur la plateforme source" else "Open Track on Source Platform",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
                         }
                     }
                 }
