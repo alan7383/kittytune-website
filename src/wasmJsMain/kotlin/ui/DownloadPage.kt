@@ -32,6 +32,9 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.HelpOutline
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
@@ -48,6 +51,7 @@ import androidx.compose.material3.SplitButtonLayout
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -64,6 +68,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -81,17 +86,19 @@ private data class PlatformInfo(
     val cssTransform: String = "",
 )
 
-private val platforms = listOf(
+private val platformOrder = listOf("Windows", "Linux", "Android", "macOS", "GitHub")
+
+private fun buildPlatforms(s: DownloadStrings): List<PlatformInfo> = listOf(
     PlatformInfo(
         name = "Windows",
         svgUrl = "svg/windows.svg",
         packageLabel = "MSI",
         repo = "alan7383/KittyTuneDesktop",
         downloadOptions = listOf(
-            "Installer (.msi)" to ".msi",
-            "Portable (.zip)" to ".zip"
+            s.windowsInstallerLabel to ".msi",
+            s.windowsPortableLabel to ".zip"
         ),
-        details = "For Windows 10, 11 64-bit"
+        details = s.windowsDetails
     ),
     PlatformInfo(
         name = "Linux",
@@ -99,13 +106,13 @@ private val platforms = listOf(
         packageLabel = "AppImage",
         repo = "alan7383/KittyTuneDesktop",
         downloadOptions = listOf(
-            "AppImage (Portable)" to ".AppImage",
-            "Debian / Ubuntu (.deb)" to ".deb",
-            "Fedora / openSUSE (.rpm)" to ".rpm",
-            "Arch Linux (AUR & Pacman)" to ".pkg.tar.zst",
-            "NixOS (Flake & Package)" to "nixos"
+            s.linuxOptAppImage to ".AppImage",
+            s.linuxOptDeb to ".deb",
+            s.linuxOptRpm to ".rpm",
+            s.linuxOptArch to ".pkg.tar.zst",
+            s.linuxOptNix to "nixos"
         ),
-        details = "Portable binary for Linux (x86_64 & ARM64)"
+        details = s.linuxDetails
     ),
     PlatformInfo(
         name = "Android",
@@ -114,12 +121,12 @@ private val platforms = listOf(
         repo = "alan7383/kittytune",
         // (label, asset name contains) — primary first
         downloadOptions = listOf(
-            "arm64-v8a (recommended)" to "arm64-v8a",
-            "armeabi-v7a (32-bit)"    to "armeabi-v7a",
-            "Universal"               to "universal",
+            s.androidArm64Label to "arm64-v8a",
+            s.androidArm32Label to "armeabi-v7a",
+            s.androidUniversalLabel to "universal",
             "x86_64"                  to "x86_64"
         ),
-        details = "For Android 8.0+"
+        details = s.androidDetails
     ),
     PlatformInfo(
         name = "macOS",
@@ -127,18 +134,18 @@ private val platforms = listOf(
         packageLabel = "DMG",
         repo = "alan7383/KittyTuneDesktop",
         downloadOptions = listOf(
-            "Apple Silicon (.dmg)" to "-arm64.dmg",
-            "Intel Mac (.dmg)" to "-x64.dmg"
+            s.macArmLabel to "-arm64.dmg",
+            s.macIntelLabel to "-x64.dmg"
         ),
-        details = "For macOS Apple Silicon & Intel"
+        details = s.macDetails
     ),
     PlatformInfo(
         name = "GitHub",
         iconVector = Icons.Filled.Code,
-        packageLabel = "Source",
+        packageLabel = s.gitHubPackageLabel,
         repo = "alan7383/KittyTuneDesktop",
         downloadOptions = emptyList(),
-        details = "Source code and releases on GitHub"
+        details = s.gitHubDetails
     )
 )
 
@@ -151,88 +158,142 @@ private data class ReleaseInfo(
 
 @Composable
 fun DownloadPage() {
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val isMobile = maxWidth < 800.dp
-        val horizontalPad = if (isMobile) 16.dp else 48.dp
+    val locale = LocalWebLocale.current
+    val s = remember(locale) { downloadStrings(locale) }
+    val sortedPlatformNames = remember {
+        var osName = "Windows"
+        getOsJs { osName = it }
+        val detected = platformOrder.find { it == osName } ?: platformOrder.first()
+        val others = platformOrder.filter { it != detected }
+        listOf(detected) + others
+    }
+    val allPlatforms = remember(s) { buildPlatforms(s) }
+    val sortedPlatforms = remember(allPlatforms, sortedPlatformNames) {
+        sortedPlatformNames.mapNotNull { name -> allPlatforms.find { it.name == name } }
+    }
+    var selectedPlatformName by remember { mutableStateOf(sortedPlatformNames.first()) }
+    val selectedPlatform = sortedPlatforms.find { it.name == selectedPlatformName } ?: sortedPlatforms.first()
 
-        DesktopScrollableColumn(
-            modifier = Modifier.fillMaxSize(),
-            columnModifier = Modifier
-                .padding(horizontal = horizontalPad)
-                .padding(top = if (isMobile) 32.dp else 72.dp, bottom = 112.dp),
-            horizontalAlignment = Alignment.Start,
-            verticalArrangement = Arrangement.spacedBy(if (isMobile) 32.dp else 46.dp)
-        ) {
-            SectionHeader(
-                title = "Download KittyTune",
-                description = "Android APK and desktop installers in one place. Choose your OS, and get the latest version directly from GitHub."
-            )
+    val linuxDistros = remember(s) { buildLinuxDistros(s) }
+    var distroIdForHelp by remember { mutableStateOf<String?>(null) }
+    val distroForHelp = remember(linuxDistros, distroIdForHelp) {
+        distroIdForHelp?.let { id -> linuxDistros.find { it.id == id } }
+    }
 
-            if (isMobile) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(24.dp)
-                ) {
-                    AmneziaStyleDownloadSelector(Modifier.fillMaxWidth())
-                    KofiBanner(Modifier.fillMaxWidth())
-                }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth().height(295.dp),
-                    horizontalArrangement = Arrangement.spacedBy(32.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(modifier = Modifier.weight(2f).fillMaxHeight()) {
-                        AmneziaStyleDownloadSelector(Modifier.fillMaxHeight())
+    CompositionLocalProvider(LocalDialogActive provides (distroForHelp != null)) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val isMobile = maxWidth < 800.dp
+            val horizontalPad = if (isMobile) 16.dp else 48.dp
+
+            DesktopScrollableColumn(
+                modifier = Modifier.fillMaxSize(),
+                columnModifier = Modifier
+                    .padding(horizontal = horizontalPad)
+                    .padding(top = if (isMobile) 32.dp else 72.dp, bottom = 112.dp),
+                horizontalAlignment = Alignment.Start,
+                verticalArrangement = Arrangement.spacedBy(if (isMobile) 32.dp else 46.dp)
+            ) {
+                SectionHeader(
+                    title = s.pageTitle,
+                    description = s.pageSubtitle
+                )
+
+                if (isMobile) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(24.dp)
+                    ) {
+                        AmneziaStyleDownloadSelector(
+                            selectedPlatform = selectedPlatform,
+                            onPlatformSelected = { selectedPlatformName = it.name },
+                            sortedPlatforms = sortedPlatforms,
+                            linuxDistros = linuxDistros,
+                            s = s,
+                            onOpenHelp = { distroIdForHelp = it.id },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        KofiBanner(s = s, modifier = Modifier.fillMaxWidth())
                     }
-                    Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                        KofiBanner(Modifier.fillMaxHeight())
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(295.dp),
+                        horizontalArrangement = Arrangement.spacedBy(32.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(modifier = Modifier.weight(2f).fillMaxHeight()) {
+                            AmneziaStyleDownloadSelector(
+                                selectedPlatform = selectedPlatform,
+                                onPlatformSelected = { selectedPlatformName = it.name },
+                                sortedPlatforms = sortedPlatforms,
+                                linuxDistros = linuxDistros,
+                                s = s,
+                                onOpenHelp = { distroIdForHelp = it.id },
+                                modifier = Modifier.fillMaxHeight()
+                            )
+                        }
+                        Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                            KofiBanner(s = s, modifier = Modifier.fillMaxHeight())
+                        }
                     }
                 }
+                Changelog(s = s)
             }
-            Changelog()
+        }
+    }
+
+    if (distroForHelp != null) {
+        CompositionLocalProvider(LocalDialogActive provides false) {
+            LinuxDistroDialog(
+                distro = distroForHelp,
+                repo = selectedPlatform.repo,
+                s = s,
+                onDismiss = { distroIdForHelp = null }
+            )
         }
     }
 }
 
 @Composable
-private fun AmneziaStyleDownloadSelector(modifier: Modifier = Modifier) {
-    val sortedPlatforms = remember {
-        var osName = "Windows"
-        getOsJs { osName = it }
-        val detected = platforms.find { it.name == osName } ?: platforms.first()
-        val others = platforms.filter { it != detected }
-        listOf(detected) + others
-    }
-    var selectedPlatform by remember { mutableStateOf(sortedPlatforms.first()) }
+private fun AmneziaStyleDownloadSelector(
+    selectedPlatform: PlatformInfo,
+    onPlatformSelected: (PlatformInfo) -> Unit,
+    sortedPlatforms: List<PlatformInfo>,
+    linuxDistros: List<LinuxDistro>,
+    s: DownloadStrings,
+    onOpenHelp: (LinuxDistro) -> Unit,
+    modifier: Modifier = Modifier
+) {
 
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(32.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow
-    ) {
-        Column(
-            modifier = Modifier.padding(vertical = 18.dp, horizontal = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val isMobile = maxWidth < 600.dp
+        val horizontalPadding = if (isMobile) 16.dp else 28.dp
+        val verticalPadding = if (isMobile) 14.dp else 18.dp
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(32.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow
         ) {
+            Column(
+                modifier = Modifier.padding(vertical = verticalPadding, horizontal = horizontalPadding),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
             // OS selection row
             Row(
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 sortedPlatforms.forEach { platform ->
-                    val isSelected = platform == selectedPlatform
+                    val isSelected = platform.name == selectedPlatform.name
                     val borderColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
                     val bgColor = if (isSelected) MaterialTheme.colorScheme.surfaceContainerHighest else Color.Transparent
 
                     Surface(
+                        onClick = { onPlatformSelected(platform) },
                         shape = RoundedCornerShape(24.dp),
                         color = bgColor,
                         border = BorderStroke(if (isSelected) 2.dp else 1.dp, borderColor),
-                        modifier = Modifier
-                            .size(width = 110.dp, height = 106.dp)
-                            .clip(RoundedCornerShape(24.dp))
-                            .clickable { selectedPlatform = platform }
+                        modifier = Modifier.size(width = 110.dp, height = 106.dp)
                     ) {
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -274,61 +335,71 @@ private fun AmneziaStyleDownloadSelector(modifier: Modifier = Modifier) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
             // Action area
-            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                val isMobile = maxWidth < 600.dp
-                val isGithub = selectedPlatform.name == "GitHub"
+            if (selectedPlatform.name == "Linux") {
+                LinuxDistributionButtons(
+                    repo = selectedPlatform.repo,
+                    linuxDistros = linuxDistros,
+                    s = s,
+                    onOpenHelp = onOpenHelp
+                )
+            } else {
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val isMobile = maxWidth < 600.dp
+                    val isGithub = selectedPlatform.name == "GitHub"
 
-                if (isMobile) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        DownloadButton(selectedPlatform, isGithub)
-                        if (selectedPlatform.name != "Android") {
-                            AlternativeDownloads(selectedPlatform)
-                        }
-                        Text(
-                            text = selectedPlatform.details,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                } else {
-                    // Desktop Mode: We put the other versions BELOW, so they have full width
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        horizontalAlignment = Alignment.Start
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(24.dp)
+                    if (isMobile) {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            DownloadButton(selectedPlatform, isGithub)
+                            DownloadButton(selectedPlatform, isGithub, s)
+                            if (selectedPlatform.name != "Android") {
+                                AlternativeDownloads(selectedPlatform, s)
+                            }
                             Text(
                                 text = selectedPlatform.details,
                                 style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
                             )
                         }
-                        if (selectedPlatform.name != "Android") {
-                            AlternativeDownloads(selectedPlatform)
+                    } else {
+                        // Desktop Mode: We put the other versions BELOW, so they have full width
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                            horizontalAlignment = Alignment.Start
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(24.dp)
+                            ) {
+                                DownloadButton(selectedPlatform, isGithub, s)
+                                Text(
+                                    text = selectedPlatform.details,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (selectedPlatform.name != "Android") {
+                                AlternativeDownloads(selectedPlatform, s)
+                            }
                         }
                     }
                 }
             }
         }
     }
+    }
 }
 
 @Composable
-private fun DownloadButton(platform: PlatformInfo, isGithub: Boolean) {
+private fun DownloadButton(platform: PlatformInfo, isGithub: Boolean, s: DownloadStrings) {
     if (!isGithub && platform.name == "Android") {
-        AndroidSplitDownloadButton(platform)
+        AndroidSplitDownloadButton(platform, s)
         return
     }
     if (!isGithub && platform.name == "macOS") {
-        MacSplitDownloadButton(platform)
+        MacSplitDownloadButton(platform, s)
         return
     }
     Button(
@@ -350,7 +421,7 @@ private fun DownloadButton(platform: PlatformInfo, isGithub: Boolean) {
         )
         Spacer(Modifier.width(12.dp))
         Text(
-            text = if (isGithub) "View repository" else "Download ${platform.packageLabel}",
+            text = if (isGithub) s.viewRepository else s.downloadPackage(platform.packageLabel),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold
         )
@@ -358,7 +429,7 @@ private fun DownloadButton(platform: PlatformInfo, isGithub: Boolean) {
 }
 
 @Composable
-private fun AndroidSplitDownloadButton(platform: PlatformInfo) {
+private fun AndroidSplitDownloadButton(platform: PlatformInfo, s: DownloadStrings) {
     val primaryOption = platform.downloadOptions.first()
     val otherOptions = platform.downloadOptions.drop(1)
     var expanded by remember { mutableStateOf(false) }
@@ -381,7 +452,7 @@ private fun AndroidSplitDownloadButton(platform: PlatformInfo) {
                     )
                     Spacer(Modifier.width(10.dp))
                     Text(
-                        text = "Download APK",
+                        text = s.downloadApk,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -401,7 +472,7 @@ private fun AndroidSplitDownloadButton(platform: PlatformInfo) {
                     )
                     Icon(
                         imageVector = Icons.Default.ArrowDropDown,
-                        contentDescription = "Other APK variants",
+                        contentDescription = s.otherApkVariants,
                         modifier = Modifier
                             .size(24.dp)
                             .graphicsLayer { rotationZ = rotation }
@@ -415,7 +486,7 @@ private fun AndroidSplitDownloadButton(platform: PlatformInfo) {
         ) {
             // Header label
             Text(
-                text = "Other APK variants",
+                text = s.otherApkVariants,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
@@ -442,7 +513,7 @@ private fun AndroidSplitDownloadButton(platform: PlatformInfo) {
 }
 
 @Composable
-private fun MacSplitDownloadButton(platform: PlatformInfo) {
+private fun MacSplitDownloadButton(platform: PlatformInfo, s: DownloadStrings) {
     val detectedArch = remember {
         var arch = "arm"
         getDetectedArchJs { arch = it }
@@ -472,12 +543,12 @@ private fun MacSplitDownloadButton(platform: PlatformInfo) {
                     Spacer(Modifier.width(10.dp))
                     Column {
                         Text(
-                            text = "Download DMG",
+                            text = s.downloadDmg,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = if (isArm) "Apple Silicon (M1/M2/M3/M4)" else "Intel Mac (x64)",
+                            text = if (isArm) s.macAppleSiliconShort else s.macIntelShort,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
                         )
@@ -498,7 +569,7 @@ private fun MacSplitDownloadButton(platform: PlatformInfo) {
                     )
                     Icon(
                         imageVector = Icons.Default.ArrowDropDown,
-                        contentDescription = "Other Mac architectures",
+                        contentDescription = s.otherMacArchitectures,
                         modifier = Modifier
                             .size(24.dp)
                             .graphicsLayer { rotationZ = rotation }
@@ -511,7 +582,7 @@ private fun MacSplitDownloadButton(platform: PlatformInfo) {
             onDismissRequest = { expanded = false }
         ) {
             Text(
-                text = "Select architecture (.dmg)",
+                text = s.selectArchitectureDmg,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
@@ -522,7 +593,7 @@ private fun MacSplitDownloadButton(platform: PlatformInfo) {
                         Column {
                             Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                             Text(
-                                if (nameContains.contains("arm64")) "Apple Silicon (M1, M2, M3, M4, ...)" else "Intel processors (x86_64)",
+                                if (nameContains.contains("arm64")) s.macAppleSiliconDesc else s.macIntelDesc,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -547,14 +618,14 @@ private fun MacSplitDownloadButton(platform: PlatformInfo) {
 }
 
 @Composable
-private fun AlternativeDownloads(platform: PlatformInfo) {
-    if (platform.downloadOptions.size > 1) {
+private fun AlternativeDownloads(platform: PlatformInfo, s: DownloadStrings) {
+    if (platform.downloadOptions.size > 1 && platform.name != "Linux") {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                "Other versions:",
+                s.otherVersions,
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -565,9 +636,7 @@ private fun AlternativeDownloads(platform: PlatformInfo) {
             ) {
                 key(platform.name) {
                     platform.downloadOptions.drop(1).forEach { (label, ext) ->
-                        if (platform.name == "Linux") {
-                            LinuxAlternativeDownloadButton(platform.repo, label, ext)
-                        } else if (platform.name == "macOS") {
+                        if (platform.name == "macOS") {
                             TextButton(
                                 onClick = { downloadLatestStableApkByNameJs(platform.repo, ext) },
                                 shapes = ButtonDefaults.shapes()
@@ -589,321 +658,490 @@ private fun AlternativeDownloads(platform: PlatformInfo) {
     }
 }
 
-@Composable
-private fun LinuxAlternativeDownloadButton(repo: String, label: String, ext: String) {
-    var expanded by remember { mutableStateOf(false) }
-    var copiedYay by remember { mutableStateOf(false) }
-    var copiedNixRun by remember { mutableStateOf(false) }
-    var copiedNixInput by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
+private data class LinuxDistro(
+    val id: String,
+    val name: String,
+    val derivatives: String,
+    val svgUrl: String,
+    val secondarySvgUrl: String? = null,
+    val packageBadge: String,
+    val downloadOptions: List<DistroDownloadOption> = emptyList(),
+    val command: String? = null,
+    val alternativeCommand: String? = null,
+    val tip: String? = null
+)
 
-    DisposableEffect(Unit) {
-        onDispose {
-            expanded = false
-        }
-    }
+private data class DistroDownloadOption(
+    val label: String,
+    val fileExtension: String,
+    val arch: String
+)
 
-    LaunchedEffect(copiedYay, copiedNixRun, copiedNixInput) {
-        if (copiedYay || copiedNixRun || copiedNixInput) {
-            delay(2500)
-            copiedYay = false
-            copiedNixRun = false
-            copiedNixInput = false
-        }
-    }
-
-    val rotation by animateFloatAsState(
-        targetValue = if (expanded) 180f else 0f,
-        label = "chevron rotation"
+private fun buildLinuxDistros(s: DownloadStrings): List<LinuxDistro> = listOf(
+    LinuxDistro(
+        id = "appimage",
+        name = "AppImage",
+        derivatives = s.appImageDerivatives,
+        svgUrl = "svg/appimage.svg",
+        packageBadge = s.badgeUniversal,
+        downloadOptions = listOf(
+            DistroDownloadOption("x86_64", ".AppImage", "x86_64"),
+            DistroDownloadOption("ARM64", ".AppImage", "arm64")
+        ),
+        command = "chmod +x KittyTune-*.AppImage && ./KittyTune-*.AppImage",
+        tip = s.appImageTip
+    ),
+    LinuxDistro(
+        id = "debian-ubuntu",
+        name = "Debian / Ubuntu",
+        derivatives = s.debianDerivatives,
+        svgUrl = "svg/ubuntu.svg",
+        secondarySvgUrl = "svg/debian.svg",
+        packageBadge = ".deb",
+        downloadOptions = listOf(
+            DistroDownloadOption("amd64", ".deb", "x86_64"),
+            DistroDownloadOption("arm64", ".deb", "arm64")
+        ),
+        command = "sudo apt install ./kitty-tune_*.deb",
+        tip = s.debianTip
+    ),
+    LinuxDistro(
+        id = "fedora-opensuse",
+        name = "Fedora / openSUSE",
+        derivatives = s.fedoraDerivatives,
+        svgUrl = "svg/fedora.svg",
+        secondarySvgUrl = "svg/opensuse.svg",
+        packageBadge = ".rpm",
+        downloadOptions = listOf(
+            DistroDownloadOption("x86_64", ".rpm", "x86_64"),
+            DistroDownloadOption("aarch64", ".rpm", "arm64")
+        ),
+        command = "sudo dnf install ./kitty-tune-*.rpm",
+        alternativeCommand = "sudo zypper install ./kitty-tune-*.rpm",
+        tip = s.fedoraTip
+    ),
+    LinuxDistro(
+        id = "arch-linux",
+        name = "Arch Linux",
+        derivatives = s.archDerivatives,
+        svgUrl = "svg/archlinux.svg",
+        packageBadge = "AUR & Pacman",
+        downloadOptions = listOf(
+            DistroDownloadOption("x86_64", ".pkg.tar.zst", "x86_64"),
+            DistroDownloadOption("aarch64", ".pkg.tar.zst", "arm64")
+        ),
+        command = "yay -S kitty-tune-bin",
+        alternativeCommand = "paru -S kitty-tune-bin",
+        tip = s.archTip
+    ),
+    LinuxDistro(
+        id = "nixos",
+        name = "NixOS",
+        derivatives = s.nixDerivatives,
+        svgUrl = "svg/nixos.svg",
+        packageBadge = "Flake",
+        downloadOptions = emptyList(),
+        command = "nix run github:alan7383/KittyTuneDesktop",
+        alternativeCommand = "inputs.kittytune.url = \"github:alan7383/KittyTuneDesktop\";",
+        tip = s.nixTip
     )
+)
+
+@Composable
+private fun LinuxDistributionButtons(
+    repo: String,
+    linuxDistros: List<LinuxDistro>,
+    s: DownloadStrings,
+    onOpenHelp: (LinuxDistro) -> Unit
+) {
     val detectedArch = remember {
         var arch = "x86"
         getDetectedArchJs { arch = it }
         arch
     }
     val isArm = detectedArch == "arm"
+    var copiedNix by remember { mutableStateOf(false) }
 
-    val distroSvg = when (ext) {
-        ".deb" -> "svg/ubuntu.svg"
-        ".rpm" -> "svg/fedora.svg"
-        ".pkg.tar.zst" -> "svg/archlinux.svg"
-        "nixos" -> "svg/nixos.svg"
-        else -> null
-    }
-
-    val x86Title = if (ext == ".deb") "x86_64 (amd64)" else "x86_64"
-    val armTitle = if (ext == ".deb") "ARM64 (arm64)" else "ARM64 (aarch64)"
-
-    val x86Text = if (!isArm) "$x86Title (recommended)" else x86Title
-    val armText = if (isArm) "$armTitle (recommended)" else armTitle
-
-    fun dismissMenu() {
-        scope.launch {
-            delay(16)
-            expanded = false
+    LaunchedEffect(copiedNix) {
+        if (copiedNix) {
+            delay(2000)
+            copiedNix = false
         }
     }
 
-    Box {
-        TextButton(
-            onClick = { expanded = true },
-            shapes = ButtonDefaults.shapes()
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            if (distroSvg != null) {
-                Box(modifier = Modifier.size(18.dp)) {
-                    HtmlImage(
-                        src = distroSvg,
-                        description = label,
-                        corner = 0.dp,
-                        fit = MediaFit.Contain,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                    Spacer(Modifier.fillMaxSize().background(Color.Transparent))
-                }
-                Spacer(Modifier.width(8.dp))
-            }
-            Text(label)
-            Spacer(Modifier.width(4.dp))
-            Icon(
-                imageVector = Icons.Default.ArrowDropDown,
-                contentDescription = "Options for $label",
-                modifier = Modifier
-                    .size(20.dp)
-                    .graphicsLayer { rotationZ = rotation }
+            Text(
+                text = s.supportedLinuxDistros,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = s.clickHelpForInstructions,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            if (ext == ".pkg.tar.zst") {
-                Text(
-                    text = "AUR (Recommended)",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                )
-                DropdownMenuItem(
-                    text = {
-                        Column {
-                            Text(
-                                "yay -S kitty-tune-bin",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                if (copiedYay) "Copied to clipboard!" else "Click to copy command",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (copiedYay) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+            linuxDistros.forEach { distro ->
+                SplitButtonLayout(
+                    leadingButton = {
+                        SplitButtonDefaults.LeadingButton(
+                            onClick = {
+                                if (distro.id == "nixos") {
+                                    copyToClipboardJs("nix run github:alan7383/KittyTuneDesktop")
+                                    copiedNix = true
+                                } else {
+                                    val opt = distro.downloadOptions.find {
+                                        if (isArm) it.arch.contains("arm") else it.arch.contains("x86")
+                                    } ?: distro.downloadOptions.firstOrNull()
+                                    if (opt != null) {
+                                        downloadLinuxReleaseJs(repo, opt.fileExtension, opt.arch)
+                                    } else {
+                                        onOpenHelp(distro)
+                                    }
+                                }
+                            },
+                            modifier = Modifier.height(52.dp),
+                            shapes = SplitButtonDefaults.leadingButtonShapesFor(52.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                if (distro.secondarySvgUrl != null) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(modifier = Modifier.size(20.dp)) {
+                                            HtmlImage(src = distro.svgUrl, description = distro.name, corner = 0.dp, fit = MediaFit.Contain, modifier = Modifier.fillMaxSize())
+                                        }
+                                        Box(modifier = Modifier.size(20.dp)) {
+                                            HtmlImage(src = distro.secondarySvgUrl, description = distro.name, corner = 0.dp, fit = MediaFit.Contain, modifier = Modifier.fillMaxSize())
+                                        }
+                                    }
+                                } else {
+                                    Box(modifier = Modifier.size(22.dp)) {
+                                        HtmlImage(src = distro.svgUrl, description = distro.name, corner = 0.dp, fit = MediaFit.Contain, modifier = Modifier.fillMaxSize())
+                                    }
+                                }
+
+                                Column {
+                                    Text(
+                                        text = distro.name,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = if (distro.id == "nixos" && copiedNix) s.copiedBang else distro.packageBadge,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
+                                    )
+                                }
+                            }
                         }
                     },
-                    onClick = {
-                        copyToClipboardJs("yay -S kitty-tune-bin")
-                        copiedYay = true
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = if (copiedYay) Icons.Default.Check else Icons.Default.ContentCopy,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = if (copiedYay) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                )
-                DropdownMenuItem(
-                    text = {
-                        Text("View AUR package", style = MaterialTheme.typography.bodyMedium)
-                    },
-                    onClick = {
-                        dismissMenu()
-                        openUrlJs("https://aur.archlinux.org/packages/kitty-tune-bin?all_deps=1")
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                )
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 4.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                )
-                Text(
-                    text = "Pacman package (.pkg.tar.zst)",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                )
-                DropdownMenuItem(
-                    text = { Text(x86Text, style = MaterialTheme.typography.bodyMedium) },
-                    onClick = {
-                        dismissMenu()
-                        downloadLinuxReleaseJs(repo, ext, "x86_64")
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Download,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                )
-                DropdownMenuItem(
-                    text = { Text(armText, style = MaterialTheme.typography.bodyMedium) },
-                    onClick = {
-                        dismissMenu()
-                        downloadLinuxReleaseJs(repo, ext, "arm64")
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Download,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                )
-            } else if (ext == "nixos") {
-                Text(
-                    text = "Nix Flake (Run directly)",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                )
-                DropdownMenuItem(
-                    text = {
-                        Column {
-                            Text(
-                                "nix run github:alan7383/KittyTuneDesktop",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                if (copiedNixRun) "Copied to clipboard!" else "Click to copy command",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (copiedNixRun) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    trailingButton = {
+                        SplitButtonDefaults.TrailingButton(
+                            checked = false,
+                            onCheckedChange = { onOpenHelp(distro) },
+                            modifier = Modifier.height(52.dp),
+                            shapes = SplitButtonDefaults.trailingButtonShapesFor(52.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.HelpOutline,
+                                contentDescription = s.instructionsFor(distro.name),
+                                modifier = Modifier.size(20.dp)
                             )
                         }
-                    },
-                    onClick = {
-                        copyToClipboardJs("nix run github:alan7383/KittyTuneDesktop")
-                        copiedNixRun = true
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = if (copiedNixRun) Icons.Default.Check else Icons.Default.ContentCopy,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = if (copiedNixRun) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
                 )
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 4.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                )
+            }
+        }
+
+        Text(
+            text = s.linuxFooterSummary,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun LinuxDistroDialog(
+    distro: LinuxDistro,
+    repo: String,
+    s: DownloadStrings,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.widthIn(max = 540.dp).fillMaxWidth(),
+        title = {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(modifier = Modifier.size(28.dp)) {
+                    HtmlImage(src = distro.svgUrl, description = distro.name, corner = 0.dp, fit = MediaFit.Contain, modifier = Modifier.fillMaxSize())
+                }
+                if (distro.secondarySvgUrl != null) {
+                    Box(modifier = Modifier.size(28.dp)) {
+                        HtmlImage(src = distro.secondarySvgUrl, description = distro.name, corner = 0.dp, fit = MediaFit.Contain, modifier = Modifier.fillMaxSize())
+                    }
+                }
                 Text(
-                    text = "NixOS & Home Manager Configuration",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                    text = s.installationTitle(distro.name),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
                 )
-                DropdownMenuItem(
-                    text = {
-                        Column {
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Text(
+                    text = distro.derivatives,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                // Main Command
+                if (distro.command != null) {
+                    CommandSnippetBox(
+                        title = when (distro.id) {
+                            "fedora-opensuse" -> s.cmdFedoraDnf
+                            "arch-linux" -> s.cmdArchYay
+                            "nixos" -> s.cmdNixRun
+                            "appimage" -> s.cmdAppImageLaunch
+                            else -> s.cmdTerminal
+                        },
+                        command = distro.command,
+                        s = s
+                    )
+                }
+
+                // Alternative Command
+                if (distro.alternativeCommand != null) {
+                    CommandSnippetBox(
+                        title = when (distro.id) {
+                            "fedora-opensuse" -> s.cmdOpenSuseZypper
+                            "arch-linux" -> s.cmdArchParu
+                            "nixos" -> s.cmdNixFlakeInput
+                            else -> s.cmdAlternative
+                        },
+                        command = distro.alternativeCommand,
+                        s = s,
+                        prompt = if (distro.id == "nixos") null else "$"
+                    )
+                }
+
+                // Tip note
+                if (distro.tip != null) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.25f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.secondary
+                            )
                             Text(
-                                "inputs.kittytune.url = \"github:alan7383/KittyTuneDesktop\";",
+                                text = distro.tip,
                                 style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                if (copiedNixInput) "Copied to clipboard!" else "Click to copy Flake input",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (copiedNixInput) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                         }
-                    },
-                    onClick = {
-                        copyToClipboardJs("inputs.kittytune.url = \"github:alan7383/KittyTuneDesktop\";")
-                        copiedNixInput = true
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = if (copiedNixInput) Icons.Default.Check else Icons.Default.ContentCopy,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = if (copiedNixInput) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                }
+
+                // Direct download buttons
+                if (distro.downloadOptions.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = s.directPackageDownload,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            distro.downloadOptions.forEach { opt ->
+                                OutlinedButton(
+                                    onClick = {
+                                        downloadLinuxReleaseJs(repo, opt.fileExtension, opt.arch)
+                                    },
+                                    shapes = ButtonDefaults.shapes(),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        text = "${opt.label} (${opt.arch})",
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                shapes = ButtonDefaults.shapes()
+            ) {
+                Text(s.close)
+            }
+        }
+    )
+}
+
+@Composable
+private fun CommandSnippetBox(
+    title: String,
+    command: String,
+    s: DownloadStrings,
+    prompt: String? = "$"
+) {
+    var copied by remember { mutableStateOf(false) }
+
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(2000)
+            copied = false
+        }
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.9f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (prompt != null) {
+                        Text(
+                            text = prompt,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
-                )
-                DropdownMenuItem(
-                    text = {
-                        Text("View Flake on GitHub", style = MaterialTheme.typography.bodyMedium)
-                    },
-                    onClick = {
-                        dismissMenu()
-                        openUrlJs("https://github.com/alan7383/KittyTuneDesktop/blob/master/flake.nix")
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    Box(
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .horizontalScroll(rememberScrollState())
+                    ) {
+                        Text(
+                            text = command,
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            style = MaterialTheme.typography.bodyMedium,
+                            softWrap = false
                         )
                     }
-                )
-            } else {
-                Text(
-                    text = if (ext == ".deb") "Select architecture (.deb)" else "Select architecture (.rpm)",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                )
-                DropdownMenuItem(
-                    text = { Text(x86Text, style = MaterialTheme.typography.bodyMedium) },
+                }
+
+                Spacer(Modifier.width(8.dp))
+
+                Button(
                     onClick = {
-                        dismissMenu()
-                        downloadLinuxReleaseJs(repo, ext, "x86_64")
+                        copyToClipboardJs(command)
+                        copied = true
                     },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Download,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    shapes = ButtonDefaults.shapes(),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    colors = if (copied) {
+                        ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.primary
                         )
-                    }
-                )
-                DropdownMenuItem(
-                    text = { Text(armText, style = MaterialTheme.typography.bodyMedium) },
-                    onClick = {
-                        dismissMenu()
-                        downloadLinuxReleaseJs(repo, ext, "arm64")
+                    } else {
+                        ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Download,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                )
+                    modifier = Modifier.height(34.dp)
+                ) {
+                    Icon(
+                        imageVector = if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
+                        contentDescription = if (copied) s.copied else s.copy,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = if (copied) s.copiedBang else s.copy,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun KofiBanner(modifier: Modifier = Modifier) {
+private fun KofiBanner(s: DownloadStrings, modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(32.dp),
@@ -919,7 +1157,7 @@ private fun KofiBanner(modifier: Modifier = Modifier) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "Support KittyTune",
+                    text = s.kofiTitle,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Black,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -928,7 +1166,7 @@ private fun KofiBanner(modifier: Modifier = Modifier) {
                 Box(modifier = Modifier.size(28.dp)) {
                     HtmlImage(
                         src = "svg/kofi_symbol.svg",
-                        description = "Coffee",
+                        description = s.kofiIconAlt,
                         corner = 0.dp,
                         fit = MediaFit.Contain,
                         modifier = Modifier.fillMaxSize()
@@ -937,7 +1175,7 @@ private fun KofiBanner(modifier: Modifier = Modifier) {
             }
             Spacer(Modifier.height(16.dp))
             Text(
-                text = "This project is entirely free and open-source. If you enjoy my work, please consider supporting its development by buying me a coffee on Ko-fi!",
+                text = s.kofiBody,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 lineHeight = 24.sp,
@@ -968,7 +1206,7 @@ private fun KofiBanner(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun Changelog() {
+private fun Changelog(s: DownloadStrings) {
     var androidRelease by remember { mutableStateOf<ReleaseInfo?>(null) }
     var desktopRelease by remember { mutableStateOf<ReleaseInfo?>(null) }
 
@@ -993,7 +1231,7 @@ private fun Changelog() {
             verticalArrangement = Arrangement.spacedBy(30.dp)
         ) {
             Text(
-                "Latest releases",
+                s.latestReleases,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Black,
                 color = MaterialTheme.colorScheme.onSurface
@@ -1002,14 +1240,14 @@ private fun Changelog() {
             if (androidRelease == null && desktopRelease == null) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                    Text("Loading release notes...", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(s.loadingReleaseNotes, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
-                androidRelease?.let { ReleaseItem(it) }
+                androidRelease?.let { ReleaseItem(it.copy(channel = s.channelAndroidApk)) }
                 if (androidRelease != null && desktopRelease != null) {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 }
-                desktopRelease?.let { ReleaseItem(it) }
+                desktopRelease?.let { ReleaseItem(it.copy(channel = s.channelDesktop)) }
             }
         }
     }
@@ -1114,17 +1352,36 @@ private fun getDetectedArchJs(onResult: (String) -> Unit) {
 
 private fun copyToClipboardJs(text: String) {
     js("""
+        function execCopy(val) {
+            try {
+                const ta = document.createElement('textarea');
+                ta.value = val;
+                ta.setAttribute('readonly', '');
+                ta.style.position = 'fixed';
+                ta.style.left = '0';
+                ta.style.top = '0';
+                ta.style.opacity = '0';
+                ta.style.pointerEvents = 'none';
+                ta.style.fontSize = '16px';
+                document.body.appendChild(ta);
+                ta.select();
+                ta.setSelectionRange(0, 99999);
+                const successful = document.execCommand('copy');
+                document.body.removeChild(ta);
+                return successful;
+            } catch (err) {
+                return false;
+            }
+        }
+
+        const syncd = execCopy(text);
+
         if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(text);
-        } else {
-            const ta = document.createElement('textarea');
-            ta.value = text;
-            ta.style.position = 'fixed';
-            ta.style.opacity = '0';
-            document.body.appendChild(ta);
-            ta.select();
-            document.execCommand('copy');
-            document.body.removeChild(ta);
+            navigator.clipboard.writeText(text).catch(function(err) {
+                if (!syncd) {
+                    console.warn('Clipboard copy failed:', err);
+                }
+            });
         }
     """)
 }
@@ -1132,18 +1389,35 @@ private fun copyToClipboardJs(text: String) {
 private fun downloadLinuxReleaseJs(repo: String, ext: String, arch: String) {
     js("""
         fetch('https://api.github.com/repos/' + repo + '/releases/latest')
-            .then(res => res.json())
+            .then(res => {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.json();
+            })
             .then(data => {
                 let url = null;
                 if (data.assets && data.assets.length > 0) {
                     let targetArch = '';
                     if (arch === 'arm64' || arch === 'aarch64') {
-                        targetArch = (ext === '.deb') ? 'arm64' : 'aarch64';
+                        targetArch = (ext.toLowerCase() === '.deb') ? 'arm64' : 'aarch64';
                     } else {
-                        targetArch = (ext === '.deb') ? 'amd64' : 'x86_64';
+                        targetArch = (ext.toLowerCase() === '.deb') ? 'amd64' : 'x86_64';
                     }
-                    const asset = data.assets.find(a => a.name.endsWith(ext) && a.name.includes(targetArch))
-                               || data.assets.find(a => a.name.endsWith(ext));
+                    const extLower = ext.toLowerCase();
+                    const isArchMatch = function(name) {
+                        const n = name.toLowerCase();
+                        if (targetArch === 'x86_64') {
+                            return n.includes('x86_64') || n.includes('x64') || n.includes('amd64');
+                        }
+                        if (targetArch === 'amd64') {
+                            return n.includes('amd64') || n.includes('x86_64') || n.includes('x64');
+                        }
+                        if (targetArch === 'arm64' || targetArch === 'aarch64') {
+                            return n.includes('arm64') || n.includes('aarch64');
+                        }
+                        return n.includes(targetArch);
+                    };
+                    const asset = data.assets.find(a => a.name.toLowerCase().endsWith(extLower) && isArchMatch(a.name))
+                               || data.assets.find(a => a.name.toLowerCase().endsWith(extLower));
                     if (asset) {
                         url = asset.browser_download_url;
                     }
@@ -1168,16 +1442,20 @@ private fun downloadLinuxReleaseJs(repo: String, ext: String, arch: String) {
 private fun downloadLatestReleaseJs(repo: String, ext: String) {
     js("""
         fetch('https://api.github.com/repos/' + repo + '/releases/latest')
-            .then(res => res.json())
+            .then(res => {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.json();
+            })
             .then(data => {
                 let url = null;
                 if (data.assets && data.assets.length > 0) {
                     let ua = (window.navigator.userAgent || '').toLowerCase();
                     let isArm = ua.includes('arm') || ua.includes('aarch64');
-                    let targetArch = isArm ? (ext === '.deb' ? 'arm64' : 'aarch64') : (ext === '.deb' ? 'amd64' : 'x86_64');
+                    let extLower = ext.toLowerCase();
+                    let targetArch = isArm ? (extLower === '.deb' ? 'arm64' : 'aarch64') : (extLower === '.deb' ? 'amd64' : 'x86_64');
 
-                    const asset = data.assets.find(a => a.name.endsWith(ext) && a.name.includes(targetArch))
-                               || data.assets.find(a => a.name.endsWith(ext));
+                    const asset = data.assets.find(a => a.name.toLowerCase().endsWith(extLower) && (a.name.toLowerCase().includes(targetArch) || (targetArch === 'x86_64' && a.name.toLowerCase().includes('x64'))))
+                               || data.assets.find(a => a.name.toLowerCase().endsWith(extLower));
                     if (asset) {
                         url = asset.browser_download_url;
                     }
@@ -1205,7 +1483,10 @@ private fun downloadLatestReleaseJs(repo: String, ext: String) {
 private fun downloadLatestStableApkByNameJs(repo: String, nameContains: String) {
     js("""
         fetch('https://api.github.com/repos/' + repo + '/releases?per_page=10')
-            .then(res => res.json())
+            .then(res => {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.json();
+            })
             .then(releases => {
                 const stable = releases.find(r => !r.prerelease && !r.draft);
                 if (!stable) {

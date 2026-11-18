@@ -21,6 +21,7 @@ data class WebMember(
     val name: String,
     val isListening: Boolean,
     val lastSeenMs: Long,
+    val avatarUrl: String? = null,
 )
 
 enum class WebRelayConnection {
@@ -34,9 +35,11 @@ enum class WebRelayConnection {
 data class TogetherWebSessionState(
     val code: String,
     val connection: WebRelayConnection = WebRelayConnection.IDLE,
+    val initialSyncComplete: Boolean = false,
     val roomName: String = "",
     val hostId: String? = null,
     val hostName: String? = null,
+    val hostAvatarUrl: String? = null,
     val hostSeenAtMs: Long = 0L,
     val hostLocked: Boolean = false,
     val automix: Boolean = false,
@@ -86,7 +89,7 @@ object TogetherWebLinks {
 
     fun extractCodeFromUrl(fullUrlOrQuery: String): String? {
         val queryMatch = Regex(
-            """[?&](?:together|listen_along|room)=([A-Za-z0-9-]{8,12})""",
+            """[?&#](?:together|listen_along|room)=([A-Za-z0-9-]{8,12})""",
             RegexOption.IGNORE_CASE,
         ).find(fullUrlOrQuery)?.groupValues?.getOrNull(1)
         if (queryMatch != null) {
@@ -122,8 +125,15 @@ object TogetherWebLinks {
         "${baseOriginAndPath.trimEnd('/')}/?together=${displayCode(code)}"
 }
 
+internal fun sanitizeTogetherAvatarUrl(raw: String?): String? {
+    val trimmed = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    if (!trimmed.startsWith("https://", ignoreCase = true)) return null
+    if (trimmed.contains("default_avatar", ignoreCase = true)) return null
+    return trimmed
+}
+
 /**
- * Applies a normalized pipe/field event emitted by the browser WebCrypto + MQTT-over-WSS bridge.
+ * Applies a normalized tab/newline event emitted by the browser WebCrypto + MQTT-over-WSS bridge.
  */
 internal fun reduceTogetherWebEvent(
     current: TogetherWebSessionState,
@@ -133,30 +143,50 @@ internal fun reduceTogetherWebEvent(
     val lines = rawPayload.split('\n')
     if (lines.isEmpty()) return current
     val header = lines[0].split('\t')
-    val kind = header.getOrNull(0) ?: return current
+    val kind = header.getOrNull(0)?.uppercase() ?: return current
 
     return when (kind) {
         "META" -> {
-            val status = when (header.getOrNull(1)) {
-                "connecting" -> if (current.connection == WebRelayConnection.CONNECTED) current.connection else WebRelayConnection.CONNECTING
-                "connected" -> WebRelayConnection.CONNECTED
-                "offline" -> WebRelayConnection.OFFLINE
-                else -> current.connection
+            when (header.getOrNull(1)) {
+                "connecting" -> current.copy(
+                    connection = if (current.connection == WebRelayConnection.CONNECTED) {
+                        current.connection
+                    } else {
+                        WebRelayConnection.CONNECTING
+                    },
+                )
+                "connected" -> current.copy(connection = WebRelayConnection.CONNECTED)
+                "sync_settled" -> current.copy(initialSyncComplete = true)
+                "offline" -> current.copy(connection = WebRelayConnection.OFFLINE)
+                else -> current
             }
-            current.copy(connection = status)
         }
 
         "HELLO" -> {
             val from = header.getOrNull(1).orEmpty()
             val name = header.getOrNull(2).orEmpty()
             val listening = header.getOrNull(3) == "1"
+            val incomingAvatar = sanitizeTogetherAvatarUrl(header.getOrNull(4))
             if (from.isBlank()) return current
-            val updatedMembers = current.members + (from to WebMember(from, name, listening, nowMs))
+            val prev = current.members[from]
+            val resolvedAvatar = incomingAvatar ?: prev?.avatarUrl
+            val updatedMembers = current.members + (
+                from to WebMember(
+                    id = from,
+                    name = name.ifBlank { prev?.name.orEmpty() },
+                    isListening = listening,
+                    lastSeenMs = nowMs,
+                    avatarUrl = resolvedAvatar,
+                )
+            )
             val updatedHostName = if (current.hostId == from && name.isNotBlank()) name else current.hostName
+            val updatedHostAvatar = if (current.hostId == from && resolvedAvatar != null) resolvedAvatar else current.hostAvatarUrl
             current.copy(
                 connection = WebRelayConnection.CONNECTED,
+                initialSyncComplete = current.initialSyncComplete || listening,
                 members = updatedMembers,
                 hostName = updatedHostName,
+                hostAvatarUrl = updatedHostAvatar,
             )
         }
 
@@ -179,9 +209,12 @@ internal fun reduceTogetherWebEvent(
             if (from.isBlank()) return current
             current.copy(
                 connection = WebRelayConnection.CONNECTED,
+                initialSyncComplete = true,
                 hostId = from,
                 hostSeenAtMs = nowMs,
                 hostName = current.members[from]?.name ?: current.hostName,
+                hostAvatarUrl = current.members[from]?.avatarUrl
+                    ?: if (current.hostId == from) current.hostAvatarUrl else null,
             )
         }
 
@@ -192,20 +225,68 @@ internal fun reduceTogetherWebEvent(
             val automix = header.getOrNull(4) == "1"
             val locked = header.getOrNull(5) == "1"
             val msgHostName = header.getOrNull(6)?.takeIf { it.isNotBlank() }
-            val track = lines.getOrNull(1)?.takeIf { it.isNotBlank() }?.let(::parseTrackLine)
+            val msgHostAvatar = sanitizeTogetherAvatarUrl(header.getOrNull(7))
+            val trackLine = lines.getOrNull(1)?.takeIf { it.isNotBlank() && !it.startsWith("LISTENER\t") }
+            val track = trackLine?.let(::parseTrackLine)
 
-            val updatedMembers = if (from.isNotBlank() && msgHostName != null) {
-                val prev = current.members[from]
-                current.members + (from to WebMember(from, msgHostName, prev?.isListening ?: true, nowMs))
-            } else {
-                current.members
+            var updatedMembers = current.members
+            val prev = if (from.isNotBlank()) updatedMembers[from] else null
+            val resolvedMemberAvatar = msgHostAvatar
+                ?: prev?.avatarUrl
+                ?: if (from.isNotBlank() && from == current.hostId) current.hostAvatarUrl else null
+            val memberName = msgHostName ?: prev?.name
+            if (from.isNotBlank() && (memberName != null || resolvedMemberAvatar != null)) {
+                updatedMembers = updatedMembers + (
+                    from to WebMember(
+                        id = from,
+                        name = memberName.orEmpty(),
+                        isListening = prev?.isListening ?: true,
+                        lastSeenMs = nowMs,
+                        avatarUrl = resolvedMemberAvatar,
+                    )
+                )
             }
-            val resolvedName = msgHostName ?: updatedMembers[from]?.name ?: current.hostName
+
+            for (idx in 1 until lines.size) {
+                val line = lines[idx]
+                if (!line.startsWith("LISTENER\t")) continue
+                val lParts = line.split('\t')
+                val lId = lParts.getOrNull(1).orEmpty()
+                if (lId.isBlank()) continue
+                val lName = lParts.getOrNull(2).orEmpty()
+                val lAvatar = sanitizeTogetherAvatarUrl(lParts.getOrNull(3))
+                val existing = updatedMembers[lId]
+                val mergedAvatar = lAvatar
+                    ?: existing?.avatarUrl
+                    ?: if (lId == from) resolvedMemberAvatar else null
+                val mergedName = lName.ifBlank {
+                    existing?.name?.takeIf { it.isNotBlank() }
+                        ?: if (lId == from) msgHostName.orEmpty() else ""
+                }
+                updatedMembers = updatedMembers + (
+                    lId to WebMember(
+                        id = lId,
+                        name = mergedName,
+                        isListening = true,
+                        lastSeenMs = nowMs,
+                        avatarUrl = mergedAvatar,
+                    )
+                )
+            }
+
+            val resolvedName = msgHostName
+                ?: updatedMembers[from]?.name?.takeIf { it.isNotBlank() }
+                ?: current.hostName
+            val resolvedHostAvatar = msgHostAvatar
+                ?: updatedMembers[from]?.avatarUrl
+                ?: if (from.isBlank() || from == current.hostId) current.hostAvatarUrl else null
 
             current.copy(
                 connection = WebRelayConnection.CONNECTED,
+                initialSyncComplete = true,
                 hostId = from.ifBlank { current.hostId },
                 hostName = resolvedName,
+                hostAvatarUrl = resolvedHostAvatar,
                 hostSeenAtMs = nowMs,
                 hostLocked = locked,
                 automix = automix,
@@ -298,10 +379,9 @@ internal fun copyTextWebJs(text: String) {
 }
 
 /**
- * Connects passively over WebSocket MQTT 3.1.1 to the same encrypted public brokers used by
- * KittyTune Android & Desktop (`broker.emqx.io` and `broker.hivemq.com`), derives the identical
- * SHA-256 topic and AES-256-GCM key from [normalizedCode], sends a sealed `SyncRequest`, and
- * emits tab-separated lines to [onEvent] for every decrypted room message.
+ * Attaches to a pre-warmed `window.__ktEarlyRelay` (started at `t = 0 ms` in `index.html` while
+ * `.wasm` was downloading, synchronously replaying all buffered events in `0 ms` without tearing
+ * down sockets) or starts a new shared `window.__ktStartRelay` session for manual code entry.
  */
 internal fun startTogetherWebRelayJs(normalizedCode: String, onEvent: (String) -> Unit) {
     js("""
@@ -311,305 +391,38 @@ internal fun startTogetherWebRelayJs(normalizedCode: String, onEvent: (String) -
                 window.__ktTogetherCleanup = null;
             }
             const clean = (normalizedCode || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-            if (clean.length !== 8 || !window.crypto || !window.crypto.subtle) {
+            if (clean.length !== 8) {
                 onEvent('META\toffline');
                 return;
             }
 
-            let stopped = false;
-            const sockets = [];
-            const timers = [];
-            const webMemberId = 'kt-web-' + Math.random().toString(36).slice(2, 10);
-            const enc = new TextEncoder();
-            const dec = new TextDecoder();
-
-            function cleanField(v) {
-                if (v === null || v === undefined) return '';
-                return String(v).replace(/[\t\r\n]/g, ' ').trim();
-            }
-
-            function encodeTrack(t) {
-                if (!t) return '';
-                const artist = cleanField(t.artist) || cleanField(t.username);
-                let art = cleanField(t.artworkUrl);
-                if (art.includes('-large.')) art = art.replace('-large.', '-t500x500.');
-                return [
-                    t.id || 0,
-                    cleanField(t.title),
-                    artist,
-                    art,
-                    t.durationMs || 0,
-                    cleanField(t.permalinkUrl),
-                    cleanField(t.source)
-                ].join('\t');
-            }
-
-            function encodeVarInt(len) {
-                const out = [];
-                let x = len;
-                do {
-                    let b = x % 128;
-                    x = Math.floor(x / 128);
-                    if (x > 0) b = b | 128;
-                    out.push(b);
-                } while (x > 0);
-                return out;
-            }
-
-            function buildConnectPacket(clientId) {
-                const cid = enc.encode(clientId);
-                const body = [
-                    0x00, 0x04, 0x4d, 0x51, 0x54, 0x54,
-                    0x04,
-                    0x02,
-                    0x00, 0x1e,
-                    (cid.length >> 8) & 0xff, cid.length & 0xff
-                ];
-                const rem = encodeVarInt(body.length + cid.length);
-                const pkt = new Uint8Array(1 + rem.length + body.length + cid.length);
-                pkt[0] = 0x10;
-                pkt.set(rem, 1);
-                pkt.set(body, 1 + rem.length);
-                pkt.set(cid, 1 + rem.length + body.length);
-                return pkt;
-            }
-
-            function buildSubscribePacket(topicStr) {
-                const t = enc.encode(topicStr);
-                const remLen = 2 + 2 + t.length + 1;
-                const rem = encodeVarInt(remLen);
-                const pkt = new Uint8Array(1 + rem.length + remLen);
-                let o = 0;
-                pkt[o++] = 0x82;
-                pkt.set(rem, o); o += rem.length;
-                pkt[o++] = 0x00; pkt[o++] = 0x01;
-                pkt[o++] = (t.length >> 8) & 0xff;
-                pkt[o++] = t.length & 0xff;
-                pkt.set(t, o); o += t.length;
-                pkt[o] = 0x00;
-                return pkt;
-            }
-
-            function buildPublishPacket(topicStr, payloadBytes) {
-                const t = enc.encode(topicStr);
-                const remLen = 2 + t.length + payloadBytes.length;
-                const rem = encodeVarInt(remLen);
-                const pkt = new Uint8Array(1 + rem.length + remLen);
-                let o = 0;
-                pkt[o++] = 0x30;
-                pkt.set(rem, o); o += rem.length;
-                pkt[o++] = (t.length >> 8) & 0xff;
-                pkt[o++] = t.length & 0xff;
-                pkt.set(t, o); o += t.length;
-                pkt.set(payloadBytes, o);
-                return pkt;
-            }
-
-            onEvent('META\tconnecting');
-
-            (async function init() {
-                try {
-                    const topicDigest = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode('topic:' + clean)));
-                    let topicHex = '';
-                    for (let i = 0; i < topicDigest.length; i++) {
-                        topicHex += topicDigest[i].toString(16).padStart(2, '0');
-                    }
-                    const topic = 'kittytune/together/' + topicHex.slice(0, 32);
-
-                    const keyDigest = await crypto.subtle.digest('SHA-256', enc.encode('key:kittytune-together:' + clean));
-                    const aesKey = await crypto.subtle.importKey('raw', keyDigest, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
-
-                    if (stopped) return;
-
-                    async function sealMessage(obj) {
-                        const iv = crypto.getRandomValues(new Uint8Array(12));
-                        const plain = enc.encode(JSON.stringify(obj));
-                        const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv, tagLength: 128 }, aesKey, plain));
-                        const combined = new Uint8Array(12 + ct.length);
-                        combined.set(iv, 0);
-                        combined.set(ct, 12);
-                        return combined;
-                    }
-
-                    async function openMessage(bytes) {
-                        if (!bytes || bytes.length <= 12) return null;
-                        try {
-                            const iv = bytes.slice(0, 12);
-                            const ct = bytes.slice(12);
-                            const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv, tagLength: 128 }, aesKey, ct);
-                            return JSON.parse(dec.decode(plain));
-                        } catch (e) {
-                            return null;
-                        }
-                    }
-
-                    let activeCount = 0;
-                    let receivedState = false;
-
-                    function handleDecoded(msg) {
-                        if (!msg || !msg.type || msg.from === webMemberId) return;
-                        if (msg.type === 'Hello') {
-                            onEvent(['HELLO', cleanField(msg.from), cleanField(msg.name), msg.isListening ? '1' : '0'].join('\t'));
-                        } else if (msg.type === 'Bye') {
-                            onEvent(['BYE', cleanField(msg.from)].join('\t'));
-                        } else if (msg.type === 'ClaimHost') {
-                            onEvent(['CLAIM', cleanField(msg.from)].join('\t'));
-                        } else if (msg.type === 'State') {
-                            receivedState = true;
-                            const head = [
-                                'STATE',
-                                cleanField(msg.from),
-                                Math.max(0, Math.floor(msg.positionMs || 0)),
-                                msg.isPlaying ? '1' : '0',
-                                msg.automix ? '1' : '0',
-                                msg.hostLocked ? '1' : '0',
-                                cleanField(msg.hostName)
-                            ].join('\t');
-                            const tLine = msg.track ? encodeTrack(msg.track) : '';
-                            onEvent(tLine ? (head + '\n' + tLine) : head);
-                        } else if (msg.type === 'Queue') {
-                            const up = Array.isArray(msg.upcoming) ? msg.upcoming.slice(0, 20) : [];
-                            const pl = Array.isArray(msg.playlist) ? msg.playlist.slice(0, 30) : [];
-                            const lines = [
-                                ['QUEUE', cleanField(msg.name), up.length, pl.length].join('\t')
-                            ];
-                            for (let i = 0; i < up.length; i++) lines.push(encodeTrack(up[i]));
-                            for (let i = 0; i < pl.length; i++) lines.push(encodeTrack(pl[i]));
-                            onEvent(lines.join('\n'));
-                        }
-                    }
-
-                    const brokers = [
-                        'wss://broker.emqx.io:8084/mqtt',
-                        'wss://broker.hivemq.com:8884/mqtt'
-                    ];
-
-                    brokers.forEach(function(brokerUrl, idx) {
-                        let ws = null;
-                        let buf = new Uint8Array(0);
-                        let mqttReady = false;
-
-                        async function sendSyncReq() {
-                            if (stopped || !ws || ws.readyState !== 1 || !mqttReady) return;
-                            try {
-                                const sealed = await sealMessage({
-                                    from: webMemberId,
-                                    sentAt: Date.now(),
-                                    type: 'SyncRequest'
-                                });
-                                if (!stopped && ws && ws.readyState === 1) {
-                                    ws.send(buildPublishPacket(topic, sealed));
-                                }
-                            } catch (e) {}
-                        }
-
-                        function openSocket() {
-                            if (stopped) return;
-                            try {
-                                ws = new WebSocket(brokerUrl, 'mqtt');
-                                ws.binaryType = 'arraybuffer';
-                                sockets.push(ws);
-                            } catch (e) {
-                                return;
-                            }
-
-                            ws.onopen = function() {
-                                if (stopped) { try { ws.close(); } catch (e) {} return; }
-                                ws.send(buildConnectPacket(webMemberId + '-' + idx + '-' + (Date.now() % 9999)));
-                            };
-
-                            ws.onmessage = function(ev) {
-                                if (stopped || !(ev.data instanceof ArrayBuffer)) return;
-                                const incoming = new Uint8Array(ev.data);
-                                const merged = new Uint8Array(buf.length + incoming.length);
-                                merged.set(buf, 0);
-                                merged.set(incoming, buf.length);
-                                buf = merged;
-
-                                while (buf.length >= 2) {
-                                    let mult = 1;
-                                    let remLen = 0;
-                                    let pos = 1;
-                                    let encodedByte = 0;
-                                    let malformed = false;
-                                    do {
-                                        if (pos >= buf.length) return;
-                                        encodedByte = buf[pos++];
-                                        remLen += (encodedByte & 127) * mult;
-                                        mult *= 128;
-                                        if (mult > 128 * 128 * 128 * 128) { malformed = true; break; }
-                                    } while ((encodedByte & 128) !== 0);
-
-                                    if (malformed) { buf = new Uint8Array(0); return; }
-                                    const totalLen = pos + remLen;
-                                    if (buf.length < totalLen) return;
-
-                                    const pktHeader = buf[0];
-                                    const pktBody = buf.slice(pos, totalLen);
-                                    buf = buf.slice(totalLen);
-
-                                    const pktType = pktHeader & 0xf0;
-                                    if (pktType === 0x20) {
-                                        mqttReady = true;
-                                        activeCount++;
-                                        onEvent('META\tconnected');
-                                        ws.send(buildSubscribePacket(topic));
-                                        sendSyncReq();
-                                        timers.push(setTimeout(function() {
-                                            if (!receivedState) sendSyncReq();
-                                        }, 2200));
-                                    } else if (pktType === 0x30 && pktBody.length >= 2) {
-                                        const qos = (pktHeader >> 1) & 0x03;
-                                        const tLen = (pktBody[0] << 8) | pktBody[1];
-                                        const offset = 2 + tLen + (qos > 0 ? 2 : 0);
-                                        if (offset < pktBody.length) {
-                                            const cipherBytes = pktBody.slice(offset);
-                                            openMessage(cipherBytes).then(function(decoded) {
-                                                if (!stopped && decoded) handleDecoded(decoded);
-                                            });
-                                        }
-                                    }
-                                }
-                            };
-
-                            ws.onclose = function() {
-                                if (mqttReady) {
-                                    mqttReady = false;
-                                    activeCount = Math.max(0, activeCount - 1);
-                                    if (!stopped && activeCount === 0) {
-                                        onEvent('META\toffline');
-                                    }
-                                }
-                                if (!stopped) {
-                                    timers.push(setTimeout(openSocket, 5000));
-                                }
-                            };
-                        }
-
-                        openSocket();
-
-                        timers.push(setInterval(function() {
-                            if (!stopped && ws && ws.readyState === 1 && mqttReady) {
-                                try { ws.send(new Uint8Array([0xc0, 0x00])); } catch (e) {}
-                                if (!receivedState) sendSyncReq();
-                            }
-                        }, 18000));
-                    });
-                } catch (e) {
-                    if (!stopped) onEvent('META\toffline');
-                }
-            })();
-
-            window.__ktTogetherCleanup = function() {
-                stopped = true;
-                for (let i = 0; i < timers.length; i++) {
-                    clearTimeout(timers[i]);
-                    clearInterval(timers[i]);
-                }
-                for (let i = 0; i < sockets.length; i++) {
-                    try { sockets[i].close(); } catch (e) {}
-                }
+            const forward = function(ev) {
+                onEvent(String(ev));
             };
+
+            const early = window.__ktEarlyRelay;
+            if (early) {
+                window.__ktEarlyRelay = null;
+                if (!early.stopped && early.code === clean) {
+                    window.__ktTogetherCleanup = function() {
+                        try { early.stop(); } catch (e) {}
+                    };
+                    early.attach(forward);
+                    return;
+                }
+                try { early.stop(); } catch (e) {}
+            }
+
+            if (typeof window.__ktStartRelay === 'function') {
+                const relay = window.__ktStartRelay(clean);
+                window.__ktTogetherCleanup = function() {
+                    try { relay.stop(); } catch (e) {}
+                };
+                relay.attach(forward);
+                return;
+            }
+
+            onEvent('META\toffline');
         })();
     """)
 }
@@ -619,6 +432,10 @@ internal fun stopTogetherWebRelayJs() {
         if (window.__ktTogetherCleanup) {
             try { window.__ktTogetherCleanup(); } catch (e) {}
             window.__ktTogetherCleanup = null;
+        }
+        if (window.__ktEarlyRelay) {
+            try { window.__ktEarlyRelay.stop(); } catch (e) {}
+            window.__ktEarlyRelay = null;
         }
     """)
 }

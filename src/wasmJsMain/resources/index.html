@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KittyTune - Open Source Music Player</title>
+    <link rel="preconnect" href="https://broker.emqx.io" crossorigin>
+    <link rel="preconnect" href="https://broker.hivemq.com" crossorigin>
     <script>
         window.addEventListener('error', function(e) {
             if (e && e.message && e.message.includes('RootNodeOwner is already disposed')) {
@@ -12,6 +14,442 @@
                 return true;
             }
         }, true);
+
+        (function() {
+            function normalizeCode(raw) {
+                return String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+            }
+
+            function extractCodeFromUrl(full) {
+                if (!full) return null;
+                var qMatch = /[?&#](?:together|listen_along|room)=([A-Za-z0-9-]{8,12})/i.exec(full);
+                if (qMatch && qMatch[1]) {
+                    var qNorm = normalizeCode(qMatch[1]);
+                    if (qNorm.length === 8) return qNorm;
+                }
+                var pMatch = /\/(?:together|listen)\/([A-Za-z0-9-]{8,12})/i.exec(full);
+                if (pMatch && pMatch[1]) {
+                    var pNorm = normalizeCode(pMatch[1]);
+                    if (pNorm.length === 8) return pNorm;
+                }
+                return null;
+            }
+
+            window.__ktStartRelay = function(rawCode) {
+                var clean = normalizeCode(rawCode);
+                var stopped = false;
+                var sockets = [];
+                var timers = [];
+                var api = {
+                    code: clean,
+                    events: [],
+                    listener: null,
+                    stopped: false,
+                    attach: function(fn) {
+                        api.listener = fn;
+                        if (!fn) return;
+                        var queued = api.events.slice();
+                        api.events.length = 0;
+                        for (var i = 0; i < queued.length; i++) {
+                            if (stopped) break;
+                            try { fn(queued[i]); } catch (e) {}
+                        }
+                    },
+                    stop: function() {
+                        if (stopped) return;
+                        stopped = true;
+                        api.stopped = true;
+                        api.listener = null;
+                        api.events.length = 0;
+                        for (var i = 0; i < timers.length; i++) {
+                            clearTimeout(timers[i]);
+                            clearInterval(timers[i]);
+                        }
+                        timers.length = 0;
+                        for (var j = 0; j < sockets.length; j++) {
+                            try { sockets[j].close(); } catch (e) {}
+                        }
+                        sockets.length = 0;
+                    }
+                };
+
+                function emit(evStr) {
+                    if (stopped) return;
+                    if (api.listener) {
+                        try { api.listener(evStr); } catch (e) {}
+                    } else if (api.events.length < 256) {
+                        api.events.push(evStr);
+                    }
+                }
+
+                if (clean.length !== 8 || !window.crypto || !window.crypto.subtle) {
+                    emit('META\toffline');
+                    return api;
+                }
+
+                var webMemberId = 'kt-web-' + Math.random().toString(36).slice(2, 10);
+                var enc = new TextEncoder();
+                var dec = new TextDecoder();
+
+                function cleanField(v) {
+                    if (v === null || v === undefined) return '';
+                    return String(v).replace(/[\t\r\n]/g, ' ').trim();
+                }
+
+                function encodeTrack(t) {
+                    if (!t) return '';
+                    var artist = cleanField(t.artist) || cleanField(t.username);
+                    var art = cleanField(t.artworkUrl);
+                    if (art.indexOf('-large.') !== -1) art = art.replace('-large.', '-t500x500.');
+                    return [
+                        t.id || 0,
+                        cleanField(t.title),
+                        artist,
+                        art,
+                        t.durationMs || 0,
+                        cleanField(t.permalinkUrl),
+                        cleanField(t.source)
+                    ].join('\t');
+                }
+
+                function encodeVarInt(len) {
+                    var out = [];
+                    var x = len;
+                    do {
+                        var b = x % 128;
+                        x = Math.floor(x / 128);
+                        if (x > 0) b = b | 128;
+                        out.push(b);
+                    } while (x > 0);
+                    return out;
+                }
+
+                function buildConnectPacket(clientId) {
+                    var cid = enc.encode(clientId);
+                    var body = [
+                        0x00, 0x04, 0x4d, 0x51, 0x54, 0x54,
+                        0x04,
+                        0x02,
+                        0x00, 0x1e,
+                        (cid.length >> 8) & 0xff, cid.length & 0xff
+                    ];
+                    var rem = encodeVarInt(body.length + cid.length);
+                    var pkt = new Uint8Array(1 + rem.length + body.length + cid.length);
+                    pkt[0] = 0x10;
+                    pkt.set(rem, 1);
+                    pkt.set(body, 1 + rem.length);
+                    pkt.set(cid, 1 + rem.length + body.length);
+                    return pkt;
+                }
+
+                function buildSubscribePacket(pktId, topicStr) {
+                    var t = enc.encode(topicStr);
+                    var remLen = 2 + 2 + t.length + 1;
+                    var rem = encodeVarInt(remLen);
+                    var pkt = new Uint8Array(1 + rem.length + remLen);
+                    var o = 0;
+                    pkt[o++] = 0x82;
+                    pkt.set(rem, o); o += rem.length;
+                    pkt[o++] = (pktId >> 8) & 0xff;
+                    pkt[o++] = pktId & 0xff;
+                    pkt[o++] = (t.length >> 8) & 0xff;
+                    pkt[o++] = t.length & 0xff;
+                    pkt.set(t, o); o += t.length;
+                    pkt[o] = 0x00;
+                    return pkt;
+                }
+
+                function buildPublishPacket(topicStr, payloadBytes) {
+                    var t = enc.encode(topicStr);
+                    var remLen = 2 + t.length + payloadBytes.length;
+                    var rem = encodeVarInt(remLen);
+                    var pkt = new Uint8Array(1 + rem.length + remLen);
+                    var o = 0;
+                    pkt[o++] = 0x30;
+                    pkt.set(rem, o); o += rem.length;
+                    pkt[o++] = (t.length >> 8) & 0xff;
+                    pkt[o++] = t.length & 0xff;
+                    pkt.set(t, o); o += t.length;
+                    pkt.set(payloadBytes, o);
+                    return pkt;
+                }
+
+                async function sha256Hex(str) {
+                    var digest = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(str)));
+                    var hex = '';
+                    for (var i = 0; i < digest.length; i++) {
+                        hex += digest[i].toString(16).padStart(2, '0');
+                    }
+                    return hex;
+                }
+
+                emit('META\tconnecting');
+
+                (async function init() {
+                    try {
+                        var derived = await Promise.all([
+                            sha256Hex('topic:' + clean),
+                            sha256Hex('snap:' + clean),
+                            crypto.subtle.digest('SHA-256', enc.encode('key:kittytune-together:' + clean))
+                        ]);
+                        var topic = 'kittytune/together/' + derived[0].slice(0, 32);
+                        var snapWildcard = 'kittytune/together/snap/' + derived[1].slice(0, 32) + '/#';
+                        var aesKey = await crypto.subtle.importKey('raw', derived[2], { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+
+                        if (stopped) return;
+
+                        async function sealMessage(obj) {
+                            var iv = crypto.getRandomValues(new Uint8Array(12));
+                            var plain = enc.encode(JSON.stringify(obj));
+                            var ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv, tagLength: 128 }, aesKey, plain));
+                            var combined = new Uint8Array(12 + ct.length);
+                            combined.set(iv, 0);
+                            combined.set(ct, 12);
+                            return combined;
+                        }
+
+                        async function openMessage(bytes) {
+                            if (!bytes || bytes.length <= 12) return null;
+                            try {
+                                var iv = bytes.slice(0, 12);
+                                var ct = bytes.slice(12);
+                                var plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv, tagLength: 128 }, aesKey, ct);
+                                return JSON.parse(dec.decode(plain));
+                            } catch (e) {
+                                return null;
+                            }
+                        }
+
+                        var activeCount = 0;
+                        var receivedState = false;
+                        var receivedLiveState = false;
+                        var receivedLiveQueue = false;
+                        var receivedPresence = false;
+                        var firstSubAckSeen = false;
+                        var latestSnapSentAt = 0;
+
+                        function handleDecoded(msg, isSnap) {
+                            if (!msg || !msg.type || msg.from === webMemberId) return;
+                            if (msg.type === 'Hello') {
+                                if (msg.isListening) receivedPresence = true;
+                                emit(['HELLO', cleanField(msg.from), cleanField(msg.name), msg.isListening ? '1' : '0', cleanField(msg.avatarUrl)].join('\t'));
+                            } else if (msg.type === 'Bye') {
+                                emit(['BYE', cleanField(msg.from)].join('\t'));
+                            } else if (msg.type === 'ClaimHost') {
+                                receivedPresence = true;
+                                emit(['CLAIM', cleanField(msg.from)].join('\t'));
+                            } else if (msg.type === 'State') {
+                                var sentAt = Number(msg.sentAt) || 0;
+                                if (isSnap) {
+                                    if (Math.abs(Date.now() - sentAt) > 60000) return;
+                                    if (receivedLiveState || sentAt < latestSnapSentAt) return;
+                                    latestSnapSentAt = sentAt;
+                                } else {
+                                    receivedLiveState = true;
+                                }
+                                receivedState = true;
+                                receivedPresence = true;
+                                var head = [
+                                    'STATE',
+                                    cleanField(msg.from),
+                                    Math.max(0, Math.floor(msg.positionMs || 0)),
+                                    msg.isPlaying ? '1' : '0',
+                                    msg.automix ? '1' : '0',
+                                    msg.hostLocked ? '1' : '0',
+                                    cleanField(msg.hostName),
+                                    cleanField(msg.hostAvatarUrl)
+                                ].join('\t');
+                                var tLine = msg.track ? encodeTrack(msg.track) : '';
+                                var outLines = [head, tLine];
+                                var rawListeners = Array.isArray(msg.listeners) ? msg.listeners : [];
+                                for (var i = 0; i < rawListeners.length; i++) {
+                                    var l = rawListeners[i];
+                                    if (l && l.id && l.id !== webMemberId) {
+                                        outLines.push(['LISTENER', cleanField(l.id), cleanField(l.name), cleanField(l.avatarUrl)].join('\t'));
+                                    }
+                                }
+                                emit(outLines.join('\n'));
+                            } else if (msg.type === 'Queue') {
+                                if (isSnap && receivedLiveQueue) return;
+                                if (!isSnap) receivedLiveQueue = true;
+                                var up = Array.isArray(msg.upcoming) ? msg.upcoming.slice(0, 20) : [];
+                                var pl = Array.isArray(msg.playlist) ? msg.playlist.slice(0, 30) : [];
+                                var lines = [
+                                    ['QUEUE', cleanField(msg.name), up.length, pl.length].join('\t')
+                                ];
+                                for (var u = 0; u < up.length; u++) lines.push(encodeTrack(up[u]));
+                                for (var p = 0; p < pl.length; p++) lines.push(encodeTrack(pl[p]));
+                                emit(lines.join('\n'));
+                            }
+                        }
+
+                        var brokers = [
+                            'wss://broker.emqx.io:8084/mqtt',
+                            'wss://broker.hivemq.com:8884/mqtt'
+                        ];
+
+                        brokers.forEach(function(brokerUrl, idx) {
+                            var ws = null;
+                            var buf = new Uint8Array(0);
+                            var mqttReady = false;
+                            var subAcked = false;
+
+                            async function sendSyncReq() {
+                                if (stopped || !ws || ws.readyState !== 1 || !mqttReady || !subAcked) return;
+                                try {
+                                    var sealed = await sealMessage({
+                                        from: webMemberId,
+                                        sentAt: Date.now(),
+                                        type: 'SyncRequest'
+                                    });
+                                    if (!stopped && ws && ws.readyState === 1 && mqttReady && subAcked) {
+                                        ws.send(buildPublishPacket(topic, sealed));
+                                    }
+                                } catch (e) {}
+                            }
+
+                            function openSocket() {
+                                if (stopped) return;
+                                subAcked = false;
+                                try {
+                                    ws = new WebSocket(brokerUrl, 'mqtt');
+                                    ws.binaryType = 'arraybuffer';
+                                    sockets.push(ws);
+                                } catch (e) {
+                                    return;
+                                }
+
+                                ws.onopen = function() {
+                                    if (stopped) { try { ws.close(); } catch (e) {} return; }
+                                    ws.send(buildConnectPacket(webMemberId + '-' + idx + '-' + (Date.now() % 9999)));
+                                };
+
+                                ws.onmessage = function(ev) {
+                                    if (stopped || !(ev.data instanceof ArrayBuffer)) return;
+                                    var incoming = new Uint8Array(ev.data);
+                                    var merged = new Uint8Array(buf.length + incoming.length);
+                                    merged.set(buf, 0);
+                                    merged.set(incoming, buf.length);
+                                    buf = merged;
+
+                                    while (buf.length >= 2) {
+                                        var mult = 1;
+                                        var remLen = 0;
+                                        var pos = 1;
+                                        var encodedByte = 0;
+                                        var malformed = false;
+                                        do {
+                                            if (pos >= buf.length) return;
+                                            encodedByte = buf[pos++];
+                                            remLen += (encodedByte & 127) * mult;
+                                            mult *= 128;
+                                            if (mult > 128 * 128 * 128 * 128) { malformed = true; break; }
+                                        } while ((encodedByte & 128) !== 0);
+
+                                        if (malformed) { buf = new Uint8Array(0); return; }
+                                        var totalLen = pos + remLen;
+                                        if (buf.length < totalLen) return;
+
+                                        var pktHeader = buf[0];
+                                        var pktBody = buf.slice(pos, totalLen);
+                                        buf = buf.slice(totalLen);
+
+                                        var pktType = pktHeader & 0xf0;
+                                        if (pktType === 0x20) {
+                                            if (pktBody.length >= 2 && pktBody[1] !== 0) {
+                                                try { ws.close(); } catch (e) {}
+                                                return;
+                                            }
+                                            mqttReady = true;
+                                            subAcked = false;
+                                            activeCount++;
+                                            emit('META\tconnected');
+                                            ws.send(buildSubscribePacket(1, topic));
+                                            ws.send(buildSubscribePacket(2, snapWildcard));
+                                        } else if (pktType === 0x90) {
+                                            var subPktId = pktBody.length >= 2 ? ((pktBody[0] << 8) | pktBody[1]) : 1;
+                                            var subRc = pktBody.length >= 3 ? pktBody[2] : 0;
+                                            if (subPktId === 1 && subRc !== 0x80 && !subAcked) {
+                                                subAcked = true;
+                                                sendSyncReq();
+                                                timers.push(setTimeout(function() {
+                                                    if (!receivedLiveState) sendSyncReq();
+                                                }, 300));
+                                                timers.push(setTimeout(function() {
+                                                    if (!receivedLiveState) sendSyncReq();
+                                                }, 950));
+                                                timers.push(setTimeout(function() {
+                                                    if (!receivedState) sendSyncReq();
+                                                }, 2200));
+                                                if (!firstSubAckSeen) {
+                                                    firstSubAckSeen = true;
+                                                    timers.push(setTimeout(function() {
+                                                        if (!stopped && !receivedPresence) {
+                                                            emit('META\tsync_settled');
+                                                        }
+                                                    }, 2200));
+                                                }
+                                            }
+                                        } else if (pktType === 0x30 && pktBody.length >= 2) {
+                                            var isRetained = (pktHeader & 0x01) !== 0;
+                                            var qos = (pktHeader >> 1) & 0x03;
+                                            var tLen = (pktBody[0] << 8) | pktBody[1];
+                                            if (2 + tLen > pktBody.length) continue;
+                                            var pktTopic = dec.decode(pktBody.slice(2, 2 + tLen));
+                                            var offset = 2 + tLen + (qos > 0 ? 2 : 0);
+                                            if (offset >= pktBody.length) continue;
+                                            var cipherBytes = pktBody.slice(offset);
+                                            if (cipherBytes.length === 0) continue;
+                                            var snapFlag = isRetained || pktTopic.indexOf('/snap/') !== -1;
+                                            (function(bytesCopy, isSnapMsg) {
+                                                openMessage(bytesCopy).then(function(decoded) {
+                                                    if (!stopped && decoded) handleDecoded(decoded, isSnapMsg);
+                                                });
+                                            })(cipherBytes, snapFlag);
+                                        }
+                                    }
+                                };
+
+                                ws.onclose = function() {
+                                    subAcked = false;
+                                    if (mqttReady) {
+                                        mqttReady = false;
+                                        activeCount = Math.max(0, activeCount - 1);
+                                        if (!stopped && activeCount === 0) {
+                                            emit('META\toffline');
+                                        }
+                                    }
+                                    if (!stopped) {
+                                        timers.push(setTimeout(openSocket, 5000));
+                                    }
+                                };
+                            }
+
+                            openSocket();
+
+                            timers.push(setInterval(function() {
+                                if (!stopped && ws && ws.readyState === 1 && mqttReady && subAcked) {
+                                    try { ws.send(new Uint8Array([0xc0, 0x00])); } catch (e) {}
+                                    if (!receivedState) sendSyncReq();
+                                }
+                            }, 18000));
+                        });
+                    } catch (e) {
+                        if (!stopped) emit('META\toffline');
+                    }
+                })();
+
+                return api;
+            };
+
+            var savedRedirect = '';
+            try { savedRedirect = window.sessionStorage.getItem('kittytune_redirect') || ''; } catch (e) {}
+            var earlyCode = extractCodeFromUrl(savedRedirect) ||
+                extractCodeFromUrl(window.location.pathname + window.location.search + window.location.hash);
+            if (earlyCode) {
+                window.__ktEarlyRelay = window.__ktStartRelay(earlyCode);
+            }
+        })();
     </script>
     <style>
         body, html {

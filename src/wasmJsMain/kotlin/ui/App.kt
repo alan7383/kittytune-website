@@ -1,22 +1,22 @@
 @file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
 package com.alananasss.kittytunewebsite.ui
 
-import androidx.compose.animation.EnterExitState
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterExitState
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -114,25 +115,31 @@ private fun updateUrlForPage(page: Page, togetherCode: String?) {
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun App() {
+    var currentLocale by remember { mutableStateOf(detectInitialWebLocale()) }
     var activeTogetherCode by remember { mutableStateOf(getTogetherCodeFromUrl()) }
     var currentPage by remember { mutableStateOf(getPageFromUrl()) }
-    var selectedColor by remember { 
+    var selectedColor by remember {
         mutableStateOf(
             kotlinx.browser.localStorage.getItem("theme_color")?.let { savedName ->
                 colorPresets.find { it.name == savedName }
             } ?: colorPresets.find { it.name == "Indigo" } ?: colorPresets[0]
-        ) 
+        )
     }
-    var selectedStyle by remember { 
+    var selectedStyle by remember {
         mutableStateOf(
             kotlinx.browser.localStorage.getItem("theme_style")?.let { savedName ->
                 paletteStyles.find { it.first == savedName }
             } ?: paletteStyles.find { it.first == "Expressive" } ?: paletteStyles[0]
-        ) 
+        )
     }
     var showThemePanel by remember { mutableStateOf(false) }
-    var isAppLoaded by remember { mutableStateOf(false) }
+    var showLanguagePanel by remember { mutableStateOf(false) }
+    var isAppLoaded by remember { mutableStateOf(activeTogetherCode != null) }
 
+    LaunchedEffect(currentLocale) {
+        persistWebLocale(currentLocale)
+        kotlinx.browser.document.documentElement?.setAttribute("lang", currentLocale.code)
+    }
     LaunchedEffect(selectedColor) {
         kotlinx.browser.localStorage.setItem("theme_color", selectedColor.name)
     }
@@ -151,7 +158,9 @@ fun App() {
         """.trimIndent()
         kotlinx.browser.document.head?.appendChild(style)
 
-        kotlinx.coroutines.delay(if (activeTogetherCode != null) 350L else 1200L)
+        if (activeTogetherCode == null) {
+            kotlinx.coroutines.delay(1200L)
+        }
         isAppLoaded = true
     }
 
@@ -172,9 +181,9 @@ fun App() {
         }
     }
 
-    LaunchedEffect(showThemePanel, isAppLoaded) {
-        val hideMedia = showThemePanel || !isAppLoaded
-        
+    LaunchedEffect(showThemePanel, showLanguagePanel, isAppLoaded) {
+        val hideMedia = showThemePanel || showLanguagePanel || !isAppLoaded
+
         if (hideMedia) {
             kotlinx.browser.document.body?.classList?.add("hide-native-media")
         } else {
@@ -199,174 +208,378 @@ fun App() {
         }
     }
 
+    val strings = appChromeStrings(currentLocale)
 
-    KittyTuneWebTheme(
-        seedColor = selectedColor.color,
-        paletteStyle = selectedStyle.second
-    ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val isMobile = maxWidth < 600.dp
+    CompositionLocalProvider(LocalWebLocale provides currentLocale) {
+        KittyTuneWebTheme(
+            seedColor = selectedColor.color,
+            paletteStyle = selectedStyle.second
+        ) {
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                val isMobile = maxWidth < 600.dp
 
-            AnimatedVisibility(
-                visible = !isAppLoaded,
-                exit = fadeOut(animationSpec = tween(600)),
-                modifier = Modifier.zIndex(300f)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.background),
-                    contentAlignment = Alignment.Center
+                AnimatedVisibility(
+                    visible = !isAppLoaded,
+                    exit = fadeOut(animationSpec = tween(600)),
+                    modifier = Modifier.zIndex(300f)
                 ) {
-                    LoadingScreen()
-                }
-            }
-
-            Scaffold(
-                bottomBar = {
-                    if (isMobile) {
-                        NavigationBar {
-                            NavigationBarItem(
-                                selected = currentPage == Page.HOME,
-                                onClick = { currentPage = Page.HOME },
-                                icon = { Icon(Icons.Filled.Home, contentDescription = "Home") },
-                                label = { Text("Home") }
-                            )
-                            NavigationBarItem(
-                                selected = currentPage == Page.FEATURES,
-                                onClick = { currentPage = Page.FEATURES },
-                                icon = { Icon(Icons.Filled.Star, contentDescription = "Features") },
-                                label = { Text("Features") }
-                            )
-                            NavigationBarItem(
-                                selected = currentPage == Page.TOGETHER,
-                                onClick = { currentPage = Page.TOGETHER },
-                                icon = { Icon(Icons.Filled.Headphones, contentDescription = "Together") },
-                                label = { Text("Together") }
-                            )
-                            NavigationBarItem(
-                                selected = currentPage == Page.DOWNLOAD,
-                                onClick = { currentPage = Page.DOWNLOAD },
-                                icon = { Icon(Icons.Filled.Download, contentDescription = "Download") },
-                                label = { Text("Download") }
-                            )
-                        }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.background),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        LoadingScreen()
                     }
-                },
-                topBar = {
-                    TopAppBar(
-                        title = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    Icons.Filled.MusicNote,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(24.dp)
+                }
+
+                Scaffold(
+                    bottomBar = {
+                        if (isMobile) {
+                            NavigationBar {
+                                NavigationBarItem(
+                                    selected = currentPage == Page.HOME,
+                                    onClick = { currentPage = Page.HOME },
+                                    icon = { Icon(Icons.Filled.Home, contentDescription = strings.navHome) },
+                                    label = { Text(strings.navHome, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    "KittyTune",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                NavigationBarItem(
+                                    selected = currentPage == Page.FEATURES,
+                                    onClick = { currentPage = Page.FEATURES },
+                                    icon = { Icon(Icons.Filled.Star, contentDescription = strings.navFeatures) },
+                                    label = { Text(strings.navFeatures, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                                )
+                                NavigationBarItem(
+                                    selected = currentPage == Page.TOGETHER,
+                                    onClick = { currentPage = Page.TOGETHER },
+                                    icon = { Icon(Icons.Filled.Headphones, contentDescription = strings.navTogether) },
+                                    label = { Text(strings.navTogether, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                                )
+                                NavigationBarItem(
+                                    selected = currentPage == Page.DOWNLOAD,
+                                    onClick = { currentPage = Page.DOWNLOAD },
+                                    icon = { Icon(Icons.Filled.Download, contentDescription = strings.navDownload) },
+                                    label = { Text(strings.navDownload, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                                 )
                             }
-                        },
-                        actions = {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier
-                                    .padding(end = 16.dp)
-                                    .horizontalScroll(rememberScrollState()),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                if (!isMobile) {
-                                    NavBarItem("Home", currentPage == Page.HOME) { currentPage = Page.HOME }
-                                    NavBarItem("Features", currentPage == Page.FEATURES) { currentPage = Page.FEATURES }
-                                    NavBarItem("Together", currentPage == Page.TOGETHER) { currentPage = Page.TOGETHER }
-                                    NavBarItem("Download", currentPage == Page.DOWNLOAD) { currentPage = Page.DOWNLOAD }
-
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                }
-
-                                IconButton(onClick = { showThemePanel = !showThemePanel }) {
+                        }
+                    },
+                    topBar = {
+                        TopAppBar(
+                            title = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
-                                        if (showThemePanel) Icons.Filled.Close else Icons.Filled.Palette,
-                                        contentDescription = "Customize theme",
-                                        tint = MaterialTheme.colorScheme.primary
+                                        Icons.Filled.MusicNote,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        "KittyTune",
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = MaterialTheme.colorScheme.onSurface
                                     )
                                 }
-                            }
-                        },
-                        colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
-                        )
-                    )
-                },
-                containerColor = MaterialTheme.colorScheme.background
-            ) { paddingValues ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(paddingValues)
-                ) {
-                    AnimatedContent(
-                        targetState = currentPage,
-                        transitionSpec = {
-                            fadeIn(animationSpec = tween(400)) togetherWith fadeOut(animationSpec = tween(400))
-                        },
-                        label = "page_transition"
-                    ) { page ->
-                        val pageAlpha by transition.animateFloat(
-                            transitionSpec = { tween(400) },
-                            label = "page_alpha"
-                        ) { state ->
-                            if (state == EnterExitState.Visible) 1f else 0f
-                        }
+                            },
+                            actions = {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier
+                                        .padding(end = 16.dp)
+                                        .horizontalScroll(rememberScrollState()),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (!isMobile) {
+                                        NavBarItem(strings.navHome, currentPage == Page.HOME) { currentPage = Page.HOME }
+                                        NavBarItem(strings.navFeatures, currentPage == Page.FEATURES) { currentPage = Page.FEATURES }
+                                        NavBarItem(strings.navTogether, currentPage == Page.TOGETHER) { currentPage = Page.TOGETHER }
+                                        NavBarItem(strings.navDownload, currentPage == Page.DOWNLOAD) { currentPage = Page.DOWNLOAD }
 
-                        CompositionLocalProvider(LocalPageAlpha provides pageAlpha) {
-                            when (page) {
-                                Page.HOME -> HomePage { currentPage = Page.DOWNLOAD }
-                                Page.FEATURES -> FeaturesPage()
-                                Page.TOGETHER -> ListenAlongPage(
-                                    activeCode = activeTogetherCode,
-                                    onCodeSelected = { code ->
-                                        activeTogetherCode = code
-                                        currentPage = Page.TOGETHER
-                                    },
-                                    onDownloadClick = { currentPage = Page.DOWNLOAD },
-                                )
-                                Page.DOWNLOAD -> DownloadPage()
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                    }
+
+                                    LanguageSwitcherButton(
+                                        currentLocale = currentLocale,
+                                        isOpen = showLanguagePanel,
+                                        contentDescription = strings.changeLanguageA11y,
+                                        onClick = {
+                                            showLanguagePanel = !showLanguagePanel
+                                            if (showLanguagePanel) showThemePanel = false
+                                        }
+                                    )
+
+                                    IconButton(
+                                        onClick = {
+                                            showThemePanel = !showThemePanel
+                                            if (showThemePanel) showLanguagePanel = false
+                                        }
+                                    ) {
+                                        Icon(
+                                            if (showThemePanel) Icons.Filled.Close else Icons.Filled.Palette,
+                                            contentDescription = if (showThemePanel) strings.closeA11y else strings.customizeThemeA11y,
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
+                            )
+                        )
+                    },
+                    containerColor = MaterialTheme.colorScheme.background
+                ) { paddingValues ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(paddingValues)
+                    ) {
+                        AnimatedContent(
+                            targetState = currentPage,
+                            transitionSpec = {
+                                fadeIn(animationSpec = tween(400)) togetherWith fadeOut(animationSpec = tween(400))
+                            },
+                            label = "page_transition"
+                        ) { page ->
+                            val pageAlpha by transition.animateFloat(
+                                transitionSpec = { tween(400) },
+                                label = "page_alpha"
+                            ) { state ->
+                                if (state == EnterExitState.Visible) 1f else 0f
+                            }
+
+                            CompositionLocalProvider(LocalPageAlpha provides pageAlpha) {
+                                when (page) {
+                                    Page.HOME -> HomePage { currentPage = Page.DOWNLOAD }
+                                    Page.FEATURES -> FeaturesPage()
+                                    Page.TOGETHER -> ListenAlongPage(
+                                        activeCode = activeTogetherCode,
+                                        onCodeSelected = { code ->
+                                            activeTogetherCode = code
+                                            currentPage = Page.TOGETHER
+                                        },
+                                        onDownloadClick = { currentPage = Page.DOWNLOAD },
+                                    )
+                                    Page.DOWNLOAD -> DownloadPage()
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            if (showThemePanel) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .zIndex(150f)
-                        .clickable { showThemePanel = false }
-                )
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 72.dp, end = 16.dp)
-                        .zIndex(200f)
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainer)
-                        .clickable {}
-                        .padding(24.dp)
-                        .width(320.dp)
-                ) {
-                    ThemePanel(
-                        selectedColor = selectedColor,
-                        onColorSelect = { selectedColor = it },
-                        selectedStyle = selectedStyle,
-                        onStyleSelect = { selectedStyle = it }
+                if (showLanguagePanel) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .zIndex(150f)
+                            .clickable { showLanguagePanel = false }
                     )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 72.dp, end = 16.dp)
+                            .zIndex(200f)
+                            .clip(RoundedCornerShape(28.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainer)
+                            .clickable {}
+                            .padding(20.dp)
+                            .width(296.dp)
+                    ) {
+                        LanguagePanel(
+                            currentLocale = currentLocale,
+                            title = strings.languagePanelTitle,
+                            closeLabel = strings.closeA11y,
+                            onSelectLocale = { locale ->
+                                currentLocale = locale
+                                showLanguagePanel = false
+                            },
+                            onClose = { showLanguagePanel = false }
+                        )
+                    }
+                }
+
+                if (showThemePanel) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .zIndex(150f)
+                            .clickable { showThemePanel = false }
+                    )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 72.dp, end = 16.dp)
+                            .zIndex(200f)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainer)
+                            .clickable {}
+                            .padding(24.dp)
+                            .width(320.dp)
+                    ) {
+                        ThemePanel(
+                            selectedColor = selectedColor,
+                            onColorSelect = { selectedColor = it },
+                            selectedStyle = selectedStyle,
+                            onStyleSelect = { selectedStyle = it }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun LanguageSwitcherButton(
+    currentLocale: WebLocale,
+    isOpen: Boolean,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    val containerColor by animateColorAsState(
+        targetValue = if (isOpen) MaterialTheme.colorScheme.primaryContainer
+        else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f),
+        animationSpec = tween(durationMillis = 220)
+    )
+    val contentColor by animateColorAsState(
+        targetValue = if (isOpen) MaterialTheme.colorScheme.onPrimaryContainer
+        else MaterialTheme.colorScheme.onSecondaryContainer,
+        animationSpec = tween(durationMillis = 220)
+    )
+
+    Button(
+        onClick = onClick,
+        shapes = ButtonDefaults.shapes(shape = CircleShape),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = containerColor,
+            contentColor = contentColor
+        ),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+        elevation = null,
+        modifier = Modifier.height(38.dp)
+    ) {
+        Icon(
+            Icons.Filled.Language,
+            contentDescription = contentDescription,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = currentLocale.shortLabel,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.ExtraBold
+        )
+        Spacer(modifier = Modifier.width(2.dp))
+        Icon(
+            if (isOpen) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+            contentDescription = null,
+            modifier = Modifier.size(16.dp)
+        )
+    }
+}
+
+@Composable
+private fun LanguagePanel(
+    currentLocale: WebLocale,
+    title: String,
+    closeLabel: String,
+    onSelectLocale: (WebLocale) -> Unit,
+    onClose: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Filled.Language,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            IconButton(
+                onClick = onClose,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    Icons.Filled.Close,
+                    contentDescription = closeLabel,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+
+        Column(
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier
+                .verticalScroll(rememberScrollState())
+                .heightIn(max = 420.dp)
+        ) {
+            WebLocale.entries.forEach { locale ->
+                val isSelected = locale == currentLocale
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(
+                            if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                            else Color.Transparent
+                        )
+                        .clickable { onSelectLocale(locale) }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.surfaceContainerHighest
+                        ) {
+                            Text(
+                                text = locale.shortLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                        Text(
+                            text = locale.nativeName,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                            else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    if (isSelected) {
+                        Icon(
+                            Icons.Filled.Check,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
         }
@@ -381,6 +594,8 @@ fun ThemePanel(
     selectedStyle: Pair<String, PaletteStyle>,
     onStyleSelect: (Pair<String, PaletteStyle>) -> Unit
 ) {
+    val strings = appChromeStrings(LocalWebLocale.current)
+
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -389,18 +604,30 @@ fun ThemePanel(
         ) {
             Icon(Icons.Filled.Palette, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
             Text(
-                "Customize",
+                strings.customizeTitle,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
         }
 
-        Text(
-            "Seed color",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                strings.seedColorLabel,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                strings.colorName(selectedColor.name),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
 
         val chunked = colorPresets.chunked(5)
         chunked.forEach { row ->
@@ -417,7 +644,7 @@ fun ThemePanel(
                         if (selectedColor.name == preset.name) {
                             Icon(
                                 Icons.Filled.Check,
-                                contentDescription = null,
+                                contentDescription = strings.colorName(preset.name),
                                 tint = Color.White,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -428,7 +655,7 @@ fun ThemePanel(
         }
 
         Text(
-            "Palette style",
+            strings.paletteStyleLabel,
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -453,7 +680,7 @@ fun ThemePanel(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        style.first,
+                        strings.paletteStyleName(style.first),
                         style = MaterialTheme.typography.bodyMedium,
                         color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
                         else MaterialTheme.colorScheme.onSurface
