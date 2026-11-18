@@ -1,10 +1,8 @@
 package com.alananasss.kittytunewebsite.ui
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Code
@@ -25,7 +23,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.browser.window
-import kotlinx.coroutines.delay
 
 private data class PlatformSummary(
     val name: String,
@@ -39,46 +36,6 @@ private data class HomeCapability(
     val title: String,
     val description: String,
     val icon: ImageVector,
-)
-
-private val platformSummaries = listOf(
-    PlatformSummary(
-        name = "Android",
-        label = "Mobile APK",
-        icon = Icons.Filled.PhoneAndroid,
-        description = "The original Android app stays true to Pixel: Material You, widgets, lyrics, SoundCloud, and YouTube in a touch-friendly interface.",
-        points = listOf("Dynamic Colors", "Android Widgets", "Audio FX", "Synced Lyrics")
-    ),
-    PlatformSummary(
-        name = "Desktop",
-        label = "Windows, macOS, Linux",
-        icon = Icons.Filled.DesktopWindows,
-        description = "The desktop version uses the same Compose foundation, but the interface breathes on large screens with a library, playlists, and system integrations.",
-        points = listOf("SMTC and MPRIS", "Local Files", "Large Libraries", "Keyboard Controls")
-    ),
-)
-
-private val homeCapabilities = listOf(
-    HomeCapability(
-        title = "SoundCloud Connection",
-        description = "Official two-way synchronization of your likes, playlists, reposts, and listening history.",
-        icon = Icons.Filled.CloudSync
-    ),
-    HomeCapability(
-        title = "Hybrid Audio",
-        description = "SoundCloud, YouTube, and local files coexisting without ads or restrictive algorithms.",
-        icon = Icons.Filled.LibraryMusic
-    ),
-    HomeCapability(
-        title = "Real-time Effects",
-        description = "Nightcore, 8D Audio, bass boost, and pitch adjustments without latency while listening.",
-        icon = Icons.Filled.GraphicEq
-    ),
-    HomeCapability(
-        title = "Local-first",
-        description = "No telemetry. Download caching and UI preferences remain entirely under your control.",
-        icon = Icons.Filled.Security
-    ),
 )
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -95,6 +52,9 @@ fun LoadingScreen() {
 
 @Composable
 fun HomePage(onDownloadClick: () -> Unit) {
+    val locale = LocalWebLocale.current
+    val strings = homeStrings(locale)
+
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val isMobile = maxWidth < 600.dp
         DesktopScrollableColumn(
@@ -102,46 +62,46 @@ fun HomePage(onDownloadClick: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(if (isMobile) 80.dp else 160.dp)
         ) {
             HeroSection(onDownloadClick)
-        StatsRow()
-        PlatformOverview()
-        SharedCapabilities()
+            StatsRow()
+            PlatformOverview()
+            SharedCapabilities()
 
-        FeatureShowcaseRow(
-            title = "Android keeps its Pixel identity.",
-            description = "The Astro page can disappear: the Kotlin site now presents the APK with Dynamic Colors, widgets, lyrics, and audio FX in the same visual language as the desktop.",
-            asset = MediaAsset(
-                fileName = "android-home.png",
-                title = "KittyTune Android",
-                caption = "A Material You interface designed for Android 12+ and usable from Android 8.0.",
-                fit = MediaFit.Contain
-            ),
-            textLeft = true
-        )
+            FeatureShowcaseRow(
+                title = strings.showcaseAndroidTitle,
+                description = strings.showcaseAndroidDesc,
+                asset = MediaAsset(
+                    fileName = "android-home.png",
+                    title = strings.showcaseAndroidMediaTitle,
+                    caption = strings.showcaseAndroidMediaCaption,
+                    fit = MediaFit.Contain
+                ),
+                textLeft = true
+            )
 
-        FeatureShowcaseRow(
-            title = "Desktop is not just a scaled-up version.",
-            description = "On Windows, macOS, and Linux, KittyTune takes advantage of space: wide library, comfortable lists, persistent playback, and native media integrations.",
-            asset = MediaAsset(
-                fileName = "libraryfullscreen.mp4",
-                title = "Desktop Library",
-                caption = "Wide, readable views adapted for long sessions."
-            ),
-            textLeft = false
-        )
+            FeatureShowcaseRow(
+                title = strings.showcaseDesktopTitle,
+                description = strings.showcaseDesktopDesc,
+                asset = MediaAsset(
+                    fileName = "libraryfullscreen.mp4",
+                    title = strings.showcaseDesktopMediaTitle,
+                    caption = strings.showcaseDesktopMediaCaption
+                ),
+                textLeft = false
+            )
 
-        FeatureShowcaseRow(
-            title = "The sound remains in your hands.",
-            description = "Pitch, speed, 8D, bass boost, or muffled mode: effects are made to be understood quickly, then forgotten while listening.",
-            asset = MediaAsset(
-                fileName = "effects.mp4",
-                title = "Audio FX",
-                caption = "Direct controls, without complicated panels."
-            ),
-            textLeft = true
-        )
+            FeatureShowcaseRow(
+                title = strings.showcaseEffectsTitle,
+                description = strings.showcaseEffectsDesc,
+                asset = MediaAsset(
+                    fileName = "effects.mp4",
+                    title = strings.showcaseEffectsMediaTitle,
+                    caption = strings.showcaseEffectsMediaCaption
+                ),
+                textLeft = true
+            )
 
-        FooterSection()
-        Spacer(Modifier.height(32.dp))
+            FooterSection()
+            Spacer(Modifier.height(32.dp))
         }
     }
 }
@@ -182,6 +142,8 @@ fun FeatureShowcaseRow(
 
 @Composable
 fun HeroSection(onDownloadClick: () -> Unit) {
+    val strings = homeStrings(LocalWebLocale.current)
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = Color.Transparent
@@ -204,7 +166,7 @@ fun HeroSection(onDownloadClick: () -> Unit) {
                             color = MaterialTheme.colorScheme.secondaryContainer,
                         ) {
                             Text(
-                                text = "Android + Desktop - Compose Multiplatform",
+                                text = strings.heroBadge,
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -221,21 +183,25 @@ fun HeroSection(onDownloadClick: () -> Unit) {
                         )
 
                         Text(
-                            "An open-source player for Android and desktop: SoundCloud, YouTube, local files, synced lyrics, and audio FX. Simple, spacious, without ads.",
+                            strings.heroSubtitle,
                             style = if (compact) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.headlineSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             lineHeight = if (compact) 28.sp else 36.sp
                         )
 
-                        HeroActions(onDownloadClick)
+                        HeroActions(
+                            downloadLabel = strings.downloadButton,
+                            sourceLabel = strings.sourceCodeButton,
+                            onDownloadClick = onDownloadClick
+                        )
                     }
                 },
                 second = { childModifier ->
                     MediaCard(
                         asset = MediaAsset(
                             fileName = "herodemo.mp4",
-                            title = "Unified Interface",
-                            caption = "Designed for large screens while keeping the Android Material You spirit."
+                            title = strings.heroMediaTitle,
+                            caption = strings.heroMediaCaption
                         ),
                         corner = 36.dp,
                         aspectRatio = 16f / 10f,
@@ -248,15 +214,19 @@ fun HeroSection(onDownloadClick: () -> Unit) {
 }
 
 @Composable
-private fun HeroActions(onDownloadClick: () -> Unit) {
+private fun HeroActions(
+    downloadLabel: String,
+    sourceLabel: String,
+    onDownloadClick: () -> Unit,
+) {
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
         val compact = maxWidth < 520.dp
         val buttonModifier = if (compact) Modifier.fillMaxWidth().height(56.dp) else Modifier.height(56.dp)
 
         if (compact) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                PrimaryDownloadButton(onDownloadClick, buttonModifier)
-                SourceButton(buttonModifier)
+                PrimaryDownloadButton(downloadLabel, onDownloadClick, buttonModifier)
+                SourceButton(sourceLabel, buttonModifier)
             }
         } else {
             Row(
@@ -264,15 +234,15 @@ private fun HeroActions(onDownloadClick: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(top = 8.dp)
             ) {
-                PrimaryDownloadButton(onDownloadClick, buttonModifier)
-                SourceButton(buttonModifier)
+                PrimaryDownloadButton(downloadLabel, onDownloadClick, buttonModifier)
+                SourceButton(sourceLabel, buttonModifier)
             }
         }
     }
 }
 
 @Composable
-private fun PrimaryDownloadButton(onDownloadClick: () -> Unit, modifier: Modifier) {
+private fun PrimaryDownloadButton(label: String, onDownloadClick: () -> Unit, modifier: Modifier) {
     Button(
         onClick = onDownloadClick,
         modifier = modifier,
@@ -281,12 +251,12 @@ private fun PrimaryDownloadButton(onDownloadClick: () -> Unit, modifier: Modifie
     ) {
         Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(12.dp))
-        Text("Download", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        Text(label, fontWeight = FontWeight.Bold, fontSize = 16.sp)
     }
 }
 
 @Composable
-private fun SourceButton(modifier: Modifier) {
+private fun SourceButton(label: String, modifier: Modifier) {
     OutlinedButton(
         onClick = { window.open("https://github.com/alan7383/kittytune", "_blank") },
         modifier = modifier,
@@ -295,20 +265,38 @@ private fun SourceButton(modifier: Modifier) {
     ) {
         Icon(Icons.Filled.Code, contentDescription = null, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(12.dp))
-        Text("Source code", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        Text(label, fontWeight = FontWeight.Bold, fontSize = 16.sp)
     }
 }
 
 @Composable
 private fun PlatformOverview() {
+    val strings = homeStrings(LocalWebLocale.current)
+    val platformSummaries = listOf(
+        PlatformSummary(
+            name = strings.androidName,
+            label = strings.androidLabel,
+            icon = Icons.Filled.PhoneAndroid,
+            description = strings.androidDesc,
+            points = strings.androidTags
+        ),
+        PlatformSummary(
+            name = strings.desktopName,
+            label = strings.desktopLabel,
+            icon = Icons.Filled.DesktopWindows,
+            description = strings.desktopDesc,
+            points = strings.desktopTags
+        ),
+    )
+
     Surface(
         modifier = Modifier.fillMaxWidth().responsivePagePadding(),
         color = Color.Transparent
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(32.dp)) {
             SectionHeader(
-                title = "Two platforms, one unified player.",
-                description = "Android remains the mobile Material You experience. Desktop becomes the comfortable workspace to manage and listen to all your music."
+                title = strings.platformsSectionTitle,
+                description = strings.platformsSectionDesc
             )
             BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                 if (maxWidth < 860.dp) {
@@ -422,6 +410,30 @@ private fun PlatformTag(text: String, modifier: Modifier = Modifier) {
 
 @Composable
 private fun SharedCapabilities() {
+    val strings = homeStrings(LocalWebLocale.current)
+    val homeCapabilities = listOf(
+        HomeCapability(
+            title = strings.capSoundCloudTitle,
+            description = strings.capSoundCloudDesc,
+            icon = Icons.Filled.CloudSync
+        ),
+        HomeCapability(
+            title = strings.capHybridTitle,
+            description = strings.capHybridDesc,
+            icon = Icons.Filled.LibraryMusic
+        ),
+        HomeCapability(
+            title = strings.capEffectsTitle,
+            description = strings.capEffectsDesc,
+            icon = Icons.Filled.GraphicEq
+        ),
+        HomeCapability(
+            title = strings.capLocalFirstTitle,
+            description = strings.capLocalFirstDesc,
+            icon = Icons.Filled.Security
+        ),
+    )
+
     Surface(
         modifier = Modifier.fillMaxWidth().responsivePagePadding(),
         shape = RoundedCornerShape(32.dp),
@@ -483,11 +495,12 @@ private fun CapabilityItem(capability: HomeCapability, modifier: Modifier = Modi
 
 @Composable
 fun StatsRow() {
+    val strings = homeStrings(LocalWebLocale.current)
     val stats = listOf(
-        "Open Source" to "MIT License",
-        "Multi-Source" to "SoundCloud, YouTube, Local",
-        "Multi-Platform" to "Android, Windows, macOS",
-        "Zero Telemetry" to "Local-first design",
+        strings.statOpenSourceTitle to strings.statOpenSourceSub,
+        strings.statMultiSourceTitle to strings.statMultiSourceSub,
+        strings.statMultiPlatformTitle to strings.statMultiPlatformSub,
+        strings.statZeroTelemetryTitle to strings.statZeroTelemetrySub,
     )
 
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
@@ -551,6 +564,8 @@ fun StatsRow() {
 
 @Composable
 fun FooterSection() {
+    val strings = homeStrings(LocalWebLocale.current)
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surfaceContainer
@@ -562,7 +577,7 @@ fun FooterSection() {
                     horizontalAlignment = Alignment.Start
                 ) {
                     FooterBrand()
-                    FooterLegal()
+                    FooterLegal(strings.footerLegal)
                 }
             } else {
                 Row(
@@ -571,7 +586,7 @@ fun FooterSection() {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     FooterBrand()
-                    FooterLegal()
+                    FooterLegal(strings.footerLegal)
                 }
             }
         }
@@ -600,9 +615,9 @@ private fun FooterBrand() {
 }
 
 @Composable
-private fun FooterLegal() {
+private fun FooterLegal(legalText: String) {
     Text(
-        "2026 alan7383 - Open source music player",
+        legalText,
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )

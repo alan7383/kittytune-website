@@ -31,6 +31,7 @@ import org.w3c.dom.HTMLImageElement
 import org.w3c.dom.HTMLVideoElement
 
 val LocalPageAlpha = compositionLocalOf { 1f }
+val LocalDialogActive = compositionLocalOf { false }
 
 data class MediaAsset(
     val fileName: String,
@@ -222,6 +223,10 @@ fun ComparisonBoard(
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun HtmlVideo(src: String, corner: Dp, fit: MediaFit, modifier: Modifier = Modifier) {
+    if (LocalDialogActive.current) {
+        Spacer(modifier = modifier)
+        return
+    }
     val pageAlpha = LocalPageAlpha.current
     HtmlElementView(
         factory = {
@@ -252,6 +257,10 @@ fun HtmlVideo(src: String, corner: Dp, fit: MediaFit, modifier: Modifier = Modif
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun HtmlImage(src: String, description: String, corner: Dp, fit: MediaFit, modifier: Modifier = Modifier, cssFilter: String = "", cssTransform: String = "") {
+    if (LocalDialogActive.current) {
+        Spacer(modifier = modifier)
+        return
+    }
     val pageAlpha = LocalPageAlpha.current
     HtmlElementView(
         factory = {
