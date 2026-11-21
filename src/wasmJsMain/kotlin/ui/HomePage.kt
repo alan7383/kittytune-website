@@ -926,9 +926,7 @@ fun SiteFooter() {
                 val brand: @Composable (Modifier) -> Unit = { m ->
                     Column(m, verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Box(Modifier.size(48.dp).clip(PolygonShape(MaterialShapes.Cookie9Sided)).background(cs.primary), contentAlignment = Alignment.Center) {
-                                KittyLogo(Modifier.size(30.dp), tint = cs.onPrimary)
-                            }
+                            KittyBadge(52.dp)
                             Text("KittyTune", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.W900), color = cs.onSurface)
                         }
                         Text(s.footerTagline, style = MaterialTheme.typography.bodyLarge, color = cs.onSurfaceVariant, modifier = Modifier.widthIn(max = 360.dp))

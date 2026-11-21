@@ -492,10 +492,7 @@ private fun TopChrome(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Box(Modifier.size(38.dp), contentAlignment = Alignment.Center) {
-                MorphingBlob(Modifier.matchParentSize(), color = cs.primary, holdSeconds = 3f, morphSeconds = 1f, spinDegPerSecond = 8f)
-                KittyLogo(Modifier.size(24.dp), tint = cs.onPrimary)
-            }
+            com.alananasss.kittytunewebsite.ui.kit.KittyBadge(40.dp)
             Text("KittyTune", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.W900), color = cs.onSurface)
         }
 

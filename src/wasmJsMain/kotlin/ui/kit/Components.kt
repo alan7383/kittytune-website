@@ -282,16 +282,28 @@ fun Wrap(
     }
 }
 
-/** The KittyTune pixel cat, tinted to the theme. */
+/**
+ * The KittyTune pixel cat, tinted to the theme. Drawn from the app's own vector logo (tight bounds),
+ * so it stays crisp at any size; the raster version shows only while the SVG decodes.
+ */
 @Composable
 fun KittyLogo(modifier: Modifier = Modifier, tint: Color = MaterialTheme.colorScheme.primary) {
+    val vector = com.alananasss.kittytunewebsite.ui.rememberSvgPainter("files/svg/kitty_mark.svg")
     Image(
-        painter = painterResource(Res.drawable.kitty_logo),
+        painter = vector ?: painterResource(Res.drawable.kitty_logo),
         contentDescription = "KittyTune",
         colorFilter = ColorFilter.tint(tint),
         contentScale = ContentScale.Fit,
         modifier = modifier,
     )
+}
+
+/** The brand mark: the cat on a solid round badge, like the app's launcher icon. */
+@Composable
+fun KittyBadge(size: Dp, modifier: Modifier = Modifier, container: Color = MaterialTheme.colorScheme.primary, content: Color = MaterialTheme.colorScheme.onPrimary) {
+    Box(modifier.size(size).clip(CircleShape).background(container), contentAlignment = Alignment.Center) {
+        KittyLogo(Modifier.width(size * 0.72f), tint = content)
+    }
 }
 
 /** A real screenshot, decoded by Skia straight into the canvas (no DOM overlay). */

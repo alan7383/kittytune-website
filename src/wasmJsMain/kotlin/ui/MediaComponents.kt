@@ -147,6 +147,20 @@ fun DesktopScrollableColumn(
 
 private val svgPainterCache = mutableMapOf<String, androidx.compose.ui.graphics.painter.Painter>()
 
+/** Decodes (once, then cached) an SVG from composeResources/files into a painter; null while loading. */
+@Composable
+fun rememberSvgPainter(path: String): androidx.compose.ui.graphics.painter.Painter? {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val painter by androidx.compose.runtime.produceState(svgPainterCache[path], path) {
+        if (value == null) {
+            value = runCatching {
+                kittytunewebsite.generated.resources.Res.readBytes(path).decodeToSvgPainter(density)
+            }.getOrNull()?.also { svgPainterCache[path] = it }
+        }
+    }
+    return painter
+}
+
 /** An SVG from composeResources/files, rendered by Compose. */
 @Composable
 fun SvgImage(path: String, description: String?, modifier: Modifier = Modifier) {
