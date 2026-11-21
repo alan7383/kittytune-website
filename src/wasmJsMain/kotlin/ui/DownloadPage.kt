@@ -4,6 +4,10 @@ package com.alananasss.kittytunewebsite.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Lightbulb
+import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -852,6 +856,12 @@ private fun DistroCard(
     }
 }
 
+/**
+ * Install instructions for one distro, as an M3 Expressive sheet: logos on tonal badges, the
+ * compatible distros as chips, numbered steps (download then install, or the other way round for
+ * AUR and Nix), terminal-style command blocks with a morphing copy button, and the architecture this
+ * computer runs highlighted.
+ */
 @Composable
 private fun LinuxDistroDialog(
     distro: LinuxDistro,
@@ -859,247 +869,288 @@ private fun LinuxDistroDialog(
     s: DownloadStrings,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
+    val cs = MaterialTheme.colorScheme
+    val appear = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(Unit) { appear.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = 0.72f, stiffness = 420f)) }
+    val detectedArm = remember {
+        var arch = "x86"
+        getDetectedArchJs { arch = it }
+        arch == "arm"
+    }
+    // The architecture the user picked (starts on this computer's); every command follows it.
+    var selectedArm by remember { mutableStateOf(detectedArm) }
+    // Real file names of the latest release, so commands are an exact copy-paste.
+    var assets by remember(repo) { mutableStateOf(releaseAssetCache[repo]) }
+    LaunchedEffect(repo) {
+        if (assets == null) fetchReleaseAssetsJs(repo) { names ->
+            val list = names.split("\n").filter { it.isNotBlank() }
+            releaseAssetCache[repo] = list
+            assets = list
+        }
+    }
+    val fileFor: (String) -> String = { ext -> releaseFileName(assets, ext, selectedArm) }
+    // A downloaded package is installed with the command (deb, rpm, AppImage); AUR and Nix install
+    // straight from the command, the raw package being the fallback.
+    val downloadFirst = distro.id in setOf("appimage", "debian-ubuntu", "fedora-opensuse")
+
+    androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
-        modifier = Modifier.widthIn(max = 540.dp).fillMaxWidth(),
-        title = {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(modifier = Modifier.size(28.dp)) {
-                    HtmlImage(src = distro.svgUrl, description = distro.name, corner = 0.dp, fit = MediaFit.Contain, modifier = Modifier.fillMaxSize())
-                }
-                if (distro.secondarySvgUrl != null) {
-                    Box(modifier = Modifier.size(28.dp)) {
-                        HtmlImage(src = distro.secondarySvgUrl, description = distro.name, corner = 0.dp, fit = MediaFit.Contain, modifier = Modifier.fillMaxSize())
-                    }
-                }
-                Text(
-                    text = s.installationTitle(distro.name),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        },
-        text = {
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            shape = RoundedCornerShape(40.dp),
+            color = cs.surfaceContainerHigh,
+            modifier = Modifier
+                .padding(16.dp)
+                .widthIn(max = 580.dp)
+                .fillMaxWidth()
+                .graphicsLayer {
+                    val p = appear.value
+                    alpha = p.coerceIn(0f, 1f)
+                    val sc = 0.9f + 0.1f * p
+                    scaleX = sc; scaleY = sc
+                    translationY = (1f - p) * 40f
+                },
+        ) {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                Modifier.verticalScroll(rememberScrollState()).padding(28.dp),
+                verticalArrangement = Arrangement.spacedBy(22.dp)
             ) {
-                Text(
-                    text = distro.derivatives,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                // Main Command
-                if (distro.command != null) {
-                    CommandSnippetBox(
-                        title = when (distro.id) {
-                            "fedora-opensuse" -> s.cmdFedoraDnf
-                            "arch-linux" -> s.cmdArchYay
-                            "nixos" -> s.cmdNixRun
-                            "appimage" -> s.cmdAppImageLaunch
-                            else -> s.cmdTerminal
-                        },
-                        command = distro.command,
-                        s = s
-                    )
-                }
-
-                // Alternative Command
-                if (distro.alternativeCommand != null) {
-                    CommandSnippetBox(
-                        title = when (distro.id) {
-                            "fedora-opensuse" -> s.cmdOpenSuseZypper
-                            "arch-linux" -> s.cmdArchParu
-                            "nixos" -> s.cmdNixFlakeInput
-                            else -> s.cmdAlternative
-                        },
-                        command = distro.alternativeCommand,
-                        s = s,
-                        prompt = if (distro.id == "nixos") null else "$"
-                    )
-                }
-
-                // Tip note
-                if (distro.tip != null) {
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.25f)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Info,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.secondary
-                            )
-                            Text(
-                                text = distro.tip,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
+                // ── header ──
+                Row(verticalAlignment = Alignment.Top) {
+                    Row(horizontalArrangement = Arrangement.spacedBy((-14).dp)) {
+                        listOfNotNull(distro.svgUrl, distro.secondarySvgUrl).forEach { src ->
+                            Box(
+                                Modifier.size(64.dp).clip(CircleShape).background(cs.surfaceContainerHighest)
+                                    .border(3.dp, cs.surfaceContainerHigh, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                HtmlImage(src = src, description = distro.name, corner = 0.dp, fit = MediaFit.Contain, modifier = Modifier.size(34.dp))
+                            }
                         }
                     }
+                    Spacer(Modifier.weight(1f))
+                    FilledTonalIconButton(onClick = onDismiss, shapes = IconButtonDefaults.shapes(), modifier = Modifier.size(44.dp)) {
+                        Icon(androidx.compose.material.icons.Icons.Rounded.Close, s.close, modifier = Modifier.size(20.dp))
+                    }
                 }
-
-                // Direct download buttons
-                if (distro.downloadOptions.isNotEmpty()) {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            text = s.directPackageDownload,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            distro.downloadOptions.forEach { opt ->
-                                OutlinedButton(
-                                    onClick = {
-                                        downloadLinuxReleaseJs(repo, opt.fileExtension, opt.arch)
-                                    },
-                                    shapes = ButtonDefaults.shapes(),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(
-                                        text = "${opt.label} (${opt.arch})",
-                                        style = MaterialTheme.typography.labelSmall
-                                    )
-                                }
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(distro.name, style = MaterialTheme.typography.headlineMedium, color = cs.onSurface)
+                    com.alananasss.kittytunewebsite.ui.kit.Wrap(hSpacing = 6.dp, vSpacing = 6.dp) {
+                        distro.derivatives.split(",").map { it.trim().removeSuffix(".") }.filter { it.isNotEmpty() }.forEach { d ->
+                            Surface(shape = CircleShape, color = cs.secondaryContainer) {
+                                Text(d, style = MaterialTheme.typography.labelLarge, color = cs.onSecondaryContainer, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
                             }
                         }
                     }
                 }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = onDismiss,
-                shapes = ButtonDefaults.shapes()
-            ) {
-                Text(s.close)
+
+                // ── steps ──
+                val downloadStep: (@Composable () -> Unit)? = if (distro.downloadOptions.isEmpty()) null else ({
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)) {
+                        distro.downloadOptions.forEachIndexed { i, opt ->
+                            val optArm = opt.arch.contains("arm") || opt.arch.contains("aarch")
+                            val recommended = optArm == selectedArm
+                            val shape = when {
+                                distro.downloadOptions.size == 1 -> RoundedCornerShape(24.dp)
+                                i == 0 -> RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp, topEnd = 8.dp, bottomEnd = 8.dp)
+                                i == distro.downloadOptions.lastIndex -> RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp, topEnd = 24.dp, bottomEnd = 24.dp)
+                                else -> RoundedCornerShape(8.dp)
+                            }
+                            val colors = if (recommended) ButtonDefaults.buttonColors() else ButtonDefaults.filledTonalButtonColors()
+                            Button(
+                                onClick = {
+                                    selectedArm = optArm
+                                    downloadLinuxReleaseJs(repo, opt.fileExtension, opt.arch)
+                                },
+                                shapes = ButtonDefaults.shapes(shape = shape, pressedShape = RoundedCornerShape(16.dp)),
+                                colors = colors,
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                                modifier = Modifier.weight(1f).heightIn(min = 64.dp),
+                            ) {
+                                Icon(Icons.Filled.Download, null, modifier = Modifier.size(20.dp))
+                                Spacer(Modifier.width(10.dp))
+                                Column(horizontalAlignment = Alignment.Start) {
+                                    Text(opt.label, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                                    Text(if (opt.label == opt.arch) opt.fileExtension.removePrefix(".") else "${opt.arch} · ${opt.fileExtension.removePrefix(".")}", style = MaterialTheme.typography.labelSmall, maxLines = 1, modifier = Modifier.graphicsLayer { alpha = 0.8f })
+                                }
+                                // Same layout for every segment; only the check shows on the chosen one.
+                                Spacer(Modifier.weight(1f))
+                                Icon(Icons.Filled.Check, null, modifier = Modifier.size(18.dp).graphicsLayer { alpha = if (recommended) 1f else 0f })
+                            }
+                        }
+                    }
+                    if (distro.id == "arch-linux") {
+                        Spacer(Modifier.height(10.dp))
+                        RunFromDownloadsHint(s.runFromDownloads)
+                        Spacer(Modifier.height(10.dp))
+                        CommandSnippetBox(title = null, command = "sudo pacman -U ./${fileFor(".pkg.tar.zst")}", s = s)
+                    }
+                })
+                val pkgExt = distro.downloadOptions.firstOrNull()?.fileExtension
+                val file = pkgExt?.let(fileFor)
+                // Commands built from the exact file for the chosen architecture.
+                val (mainCmd, altCmd) = when (distro.id) {
+                    "appimage" -> "chmod +x $file && ./$file" to null
+                    "debian-ubuntu" -> "sudo apt install ./$file" to null
+                    "fedora-opensuse" -> "sudo dnf install ./$file" to "sudo zypper install ./$file"
+                    else -> distro.command to distro.alternativeCommand
+                }
+                val commandStep: (@Composable () -> Unit)? = if (mainCmd == null) null else ({
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (downloadFirst) RunFromDownloadsHint(s.runFromDownloads)
+                        CommandSnippetBox(
+                            title = when (distro.id) {
+                                "fedora-opensuse" -> s.cmdFedoraDnf
+                                "arch-linux" -> s.cmdArchYay
+                                "nixos" -> s.cmdNixRun
+                                "appimage" -> s.cmdAppImageLaunch
+                                else -> null
+                            },
+                            command = mainCmd,
+                            s = s
+                        )
+                        if (altCmd != null) {
+                            CommandSnippetBox(
+                                title = when (distro.id) {
+                                    "fedora-opensuse" -> s.cmdOpenSuseZypper
+                                    "arch-linux" -> s.cmdArchParu
+                                    "nixos" -> s.cmdNixFlakeInput
+                                    else -> s.cmdAlternative
+                                },
+                                command = altCmd,
+                                s = s,
+                                prompt = if (distro.id == "nixos") null else "$"
+                            )
+                        }
+                    }
+                })
+                val steps = buildList {
+                    val dl = downloadStep?.let { s.directPackageDownload.trimEnd(':', ' ', '\u00A0') to it }
+                    val cmd = commandStep?.let { s.cmdTerminal to it }
+                    if (downloadFirst) { dl?.let(::add); cmd?.let(::add) } else { cmd?.let(::add); dl?.let(::add) }
+                }
+                steps.forEachIndexed { i, (title, body) ->
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Box(
+                                Modifier.size(32.dp).clip(com.alananasss.kittytunewebsite.ui.kit.PolygonShape(androidx.compose.material3.MaterialShapes.Cookie9Sided)).background(cs.primary),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("${i + 1}", style = MaterialTheme.typography.titleSmall, color = cs.onPrimary)
+                            }
+                            Text(title, style = MaterialTheme.typography.titleMedium, color = cs.onSurface)
+                        }
+                        body()
+                    }
+                }
+
+                // ── tip ──
+                if (distro.tip != null) {
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(cs.tertiaryContainer).padding(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Icon(androidx.compose.material.icons.Icons.Rounded.Lightbulb, null, tint = cs.onTertiaryContainer, modifier = Modifier.size(20.dp))
+                        Text(distro.tip, style = MaterialTheme.typography.bodyMedium, color = cs.onTertiaryContainer)
+                    }
+                }
+
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    Button(onClick = onDismiss, shapes = ButtonDefaults.shapes(), modifier = Modifier.height(48.dp), contentPadding = PaddingValues(horizontal = 28.dp)) {
+                        Text(s.close, style = MaterialTheme.typography.titleSmall)
+                    }
+                }
             }
         }
-    )
+    }
 }
 
 @Composable
+private fun RunFromDownloadsHint(text: String) {
+    val cs = MaterialTheme.colorScheme
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(start = 4.dp)) {
+        Icon(androidx.compose.material.icons.Icons.Rounded.FolderOpen, null, tint = cs.primary, modifier = Modifier.size(18.dp))
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
+    }
+}
+
+private val releaseAssetCache = HashMap<String, List<String>>()
+
+/**
+ * The release file for [ext] and the chosen architecture: the real name from the latest GitHub
+ * release when it has loaded, otherwise the release naming pattern with a wildcard version.
+ */
+private fun releaseFileName(assets: List<String>?, ext: String, arm: Boolean): String {
+    val e = ext.lowercase()
+    val keys = if (arm) listOf("aarch64", "arm64") else listOf("x86_64", "amd64", "x64")
+    assets?.firstOrNull { n -> n.lowercase().endsWith(e) && keys.any { n.lowercase().contains(it) } }?.let { return it }
+    return when (e) {
+        ".appimage" -> "KittyTune-*-${if (arm) "aarch64" else "x86_64"}.AppImage"
+        ".deb" -> "kitty-tune_*_${if (arm) "arm64" else "amd64"}.deb"
+        ".rpm" -> "kitty-tune-*.${if (arm) "aarch64" else "x86_64"}.rpm"
+        else -> "kitty-tune-*-${if (arm) "aarch64" else "x86_64"}$ext"
+    }
+}
+
+private fun fetchReleaseAssetsJs(repo: String, onResult: (String) -> Unit) {
+    js("""
+        fetch('https://api.github.com/repos/' + repo + '/releases/latest')
+            .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(function(d) { onResult((d.assets || []).map(function(a) { return a.name; }).join('\n')); })
+            .catch(function() {});
+    """)
+}
+
+/** A terminal-style command line with a copy button that morphs into a check once copied. */
+@Composable
 private fun CommandSnippetBox(
-    title: String,
+    title: String?,
     command: String,
     s: DownloadStrings,
     prompt: String? = "$"
 ) {
+    val cs = MaterialTheme.colorScheme
     var copied by remember { mutableStateOf(false) }
-
     LaunchedEffect(copied) {
         if (copied) {
-            delay(2000)
+            delay(1800)
             copied = false
         }
     }
-
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.9f),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-            modifier = Modifier.fillMaxWidth()
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (title != null) {
+            Text(title, style = MaterialTheme.typography.labelLarge, color = cs.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp))
+        }
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(cs.surfaceContainerLowest).padding(start = 18.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+            if (prompt != null) {
+                Text(prompt, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = cs.primary, style = MaterialTheme.typography.bodyLarge)
+            }
+            Box(Modifier.weight(1f).horizontalScroll(rememberScrollState())) {
+                Text(command, fontFamily = FontFamily.Monospace, color = cs.onSurface, style = MaterialTheme.typography.bodyLarge, softWrap = false)
+            }
+            val bg by androidx.compose.animation.animateColorAsState(if (copied) cs.primary else cs.secondaryContainer)
+            val fg by androidx.compose.animation.animateColorAsState(if (copied) cs.onPrimary else cs.onSecondaryContainer)
+            val corner by androidx.compose.animation.core.animateDpAsState(
+                if (copied) 14.dp else 22.dp, androidx.compose.animation.core.spring(dampingRatio = 0.5f, stiffness = 500f)
+            )
+            Box(
+                Modifier.size(44.dp).clip(RoundedCornerShape(corner)).background(bg).clickable {
+                    copyToClipboardJs(command)
+                    copied = true
+                },
+                contentAlignment = Alignment.Center
             ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    if (prompt != null) {
-                        Text(
-                            text = prompt,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .weight(1f, fill = false)
-                            .horizontalScroll(rememberScrollState())
-                    ) {
-                        Text(
-                            text = command,
-                            fontFamily = FontFamily.Monospace,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            style = MaterialTheme.typography.bodyMedium,
-                            softWrap = false
-                        )
-                    }
-                }
-
-                Spacer(Modifier.width(8.dp))
-
-                Button(
-                    onClick = {
-                        copyToClipboardJs(command)
-                        copied = true
-                    },
-                    shapes = ButtonDefaults.shapes(),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                    colors = if (copied) {
-                        ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                            contentColor = MaterialTheme.colorScheme.primary
-                        )
-                    } else {
-                        ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    },
-                    modifier = Modifier.height(34.dp)
-                ) {
+                androidx.compose.animation.AnimatedContent(copied, label = "copy") { c ->
                     Icon(
-                        imageVector = if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
-                        contentDescription = if (copied) s.copied else s.copy,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        text = if (copied) s.copiedBang else s.copy,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold
+                        if (c) Icons.Filled.Check else Icons.Filled.ContentCopy,
+                        if (c) s.copied else s.copy,
+                        tint = fg, modifier = Modifier.size(20.dp)
                     )
                 }
             }
