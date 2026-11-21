@@ -54,3 +54,6 @@ bin/
 .DS_Store
 arch_build/
 *.pkg.tar.zst
+
+# Perf benchmark scripts are part of the repo
+!tools/perf/*.py

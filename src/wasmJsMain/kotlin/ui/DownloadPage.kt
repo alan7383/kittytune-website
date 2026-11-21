@@ -1,4 +1,4 @@
-@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
+@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class, androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 package com.alananasss.kittytunewebsite.ui
 
 import androidx.compose.foundation.BorderStroke
@@ -19,11 +19,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -37,6 +41,8 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonGroupDefaults
+import com.alananasss.kittytunewebsite.ui.kit.springyPress
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material3.ButtonDefaults
@@ -45,6 +51,9 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SplitButtonDefaults
 import androidx.compose.material3.SplitButtonLayout
@@ -62,6 +71,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.graphicsLayer
+import com.alananasss.kittytunewebsite.ui.kit.reveal
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -181,63 +191,66 @@ fun DownloadPage() {
     }
 
     CompositionLocalProvider(LocalDialogActive provides (distroForHelp != null)) {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val isMobile = maxWidth < 800.dp
-            val horizontalPad = if (isMobile) 16.dp else 48.dp
-
-            DesktopScrollableColumn(
-                modifier = Modifier.fillMaxSize(),
-                columnModifier = Modifier
-                    .padding(horizontal = horizontalPad)
-                    .padding(top = if (isMobile) 32.dp else 72.dp, bottom = 112.dp),
-                horizontalAlignment = Alignment.Start,
-                verticalArrangement = Arrangement.spacedBy(if (isMobile) 32.dp else 46.dp)
-            ) {
-                SectionHeader(
-                    title = s.pageTitle,
-                    description = s.pageSubtitle
-                )
-
-                if (isMobile) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(24.dp)
-                    ) {
-                        AmneziaStyleDownloadSelector(
-                            selectedPlatform = selectedPlatform,
-                            onPlatformSelected = { selectedPlatformName = it.name },
-                            sortedPlatforms = sortedPlatforms,
-                            linuxDistros = linuxDistros,
-                            s = s,
-                            onOpenHelp = { distroIdForHelp = it.id },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        KofiBanner(s = s, modifier = Modifier.fillMaxWidth())
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().height(295.dp),
-                        horizontalArrangement = Arrangement.spacedBy(32.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(modifier = Modifier.weight(2f).fillMaxHeight()) {
-                            AmneziaStyleDownloadSelector(
-                                selectedPlatform = selectedPlatform,
-                                onPlatformSelected = { selectedPlatformName = it.name },
-                                sortedPlatforms = sortedPlatforms,
-                                linuxDistros = linuxDistros,
-                                s = s,
-                                onOpenHelp = { distroIdForHelp = it.id },
-                                modifier = Modifier.fillMaxHeight()
+        val cs = MaterialTheme.colorScheme
+        com.alananasss.kittytunewebsite.ui.kit.PageColumn {
+            com.alananasss.kittytunewebsite.ui.kit.ViewportGate {
+                Box(Modifier.fillMaxWidth()) {
+                    Box(Modifier.matchParentSize()) {
+                        // No alpha layer here: a graphicsLayer is sized to this (shorter) header box,
+                        // so it sliced the 420 dp shape flat. Transparency goes in the colour instead,
+                        // and the blob lays out at its real size.
+                        Box(Modifier.align(Alignment.TopEnd).offset(x = 120.dp, y = (-40).dp).wrapContentSize(Alignment.TopEnd, unbounded = true)) {
+                            com.alananasss.kittytunewebsite.ui.kit.MorphingBlob(
+                                Modifier.size(420.dp),
+                                color = cs.primaryContainer.copy(alpha = 0.3f), spinDegPerSecond = 7f,
                             )
                         }
-                        Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                            KofiBanner(s = s, modifier = Modifier.fillMaxHeight())
+                    }
+                    com.alananasss.kittytunewebsite.ui.kit.ContentWidth {
+                        val narrow = maxWidth < 640.dp
+                        Column(Modifier.padding(top = 24.dp, bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
+                            com.alananasss.kittytunewebsite.ui.kit.Eyebrow("v3 · Android · Windows · macOS · Linux", Icons.Filled.Download, modifier = Modifier.reveal())
+                            Text(
+                                s.pageTitle,
+                                style = if (narrow) MaterialTheme.typography.displayMedium else MaterialTheme.typography.displayLarge.copy(fontSize = 80.sp, lineHeight = 84.sp),
+                                color = cs.onSurface,
+                                modifier = Modifier.reveal(80, 70f)
+                            )
+                            Text(
+                                s.pageSubtitle,
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.W500),
+                                color = cs.onSurfaceVariant,
+                                modifier = Modifier.widthIn(max = 720.dp).reveal(160)
+                            )
                         }
                     }
                 }
-                Changelog(s = s)
             }
+            com.alananasss.kittytunewebsite.ui.kit.ContentWidth {
+                val isMobile = maxWidth < 800.dp
+                Column(verticalArrangement = Arrangement.spacedBy(if (isMobile) 24.dp else 32.dp), modifier = Modifier.reveal(220)) {
+                    AmneziaStyleDownloadSelector(
+                        selectedPlatform = selectedPlatform,
+                        onPlatformSelected = { selectedPlatformName = it.name },
+                        sortedPlatforms = sortedPlatforms,
+                        linuxDistros = linuxDistros,
+                        s = s,
+                        onOpenHelp = { distroIdForHelp = it.id },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (isMobile) {
+                        KofiBanner(s = s, modifier = Modifier.fillMaxWidth())
+                        Changelog(s = s)
+                    } else {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.Top) {
+                            KofiBanner(s = s, modifier = Modifier.weight(1f))
+                            Box(Modifier.weight(2f)) { Changelog(s = s) }
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(120.dp))
+            SiteFooter()
         }
     }
 
@@ -263,132 +276,83 @@ private fun AmneziaStyleDownloadSelector(
     onOpenHelp: (LinuxDistro) -> Unit,
     modifier: Modifier = Modifier
 ) {
-
-    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        val isMobile = maxWidth < 600.dp
-        val horizontalPadding = if (isMobile) 16.dp else 28.dp
-        val verticalPadding = if (isMobile) 14.dp else 18.dp
-
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(32.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerLow
-        ) {
-            Column(
-                modifier = Modifier.padding(vertical = verticalPadding, horizontal = horizontalPadding),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-            // OS selection row
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                sortedPlatforms.forEach { platform ->
-                    val isSelected = platform.name == selectedPlatform.name
-                    val borderColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
-                    val bgColor = if (isSelected) MaterialTheme.colorScheme.surfaceContainerHighest else Color.Transparent
-
-                    Surface(
-                        onClick = { onPlatformSelected(platform) },
-                        shape = RoundedCornerShape(24.dp),
-                        color = bgColor,
-                        border = BorderStroke(if (isSelected) 2.dp else 1.dp, borderColor),
-                        modifier = Modifier.size(width = 110.dp, height = 106.dp)
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center,
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            if (platform.svgUrl != null) {
-                                Box(modifier = Modifier.size(36.dp)) {
-                                    HtmlImage(
-                                        src = platform.svgUrl,
-                                        description = platform.name,
-                                        corner = 0.dp,
-                                        fit = MediaFit.Contain,
-                                        cssTransform = platform.cssTransform,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                    Spacer(Modifier.fillMaxSize().background(Color.Transparent))
-                                }
-                            } else if (platform.iconVector != null) {
-                                Icon(
-                                    imageVector = platform.iconVector,
-                                    contentDescription = platform.name,
-                                    modifier = Modifier.size(36.dp),
-                                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+    val cs = MaterialTheme.colorScheme
+    Surface(modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(40.dp), color = cs.surfaceContainerLow) {
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val narrow = maxWidth < 560.dp
+            val pad = if (narrow) 16.dp else 28.dp
+            Column(Modifier.padding(pad), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                // platforms: one connected M3 Expressive button group (two rows on phones)
+                val perRow = if (narrow) 3 else sortedPlatforms.size
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    val rows = sortedPlatforms.chunked(perRow)
+                    rows.forEachIndexed { r, row ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                            row.forEachIndexed { i, platform ->
+                                PlatformTile(
+                                    platform, platform.name == selectedPlatform.name, narrow,
+                                    position = SegmentPosition(first = i == 0, last = i == row.lastIndex, top = r == 0, bottom = r == rows.lastIndex),
+                                    modifier = Modifier.weight(1f),
+                                ) { onPlatformSelected(platform) }
                             }
-                            Spacer(Modifier.height(12.dp))
-                            Text(
-                                text = platform.name,
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = if (isSelected) FontWeight.Black else FontWeight.Medium,
-                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                            )
+                            repeat(perRow - row.size) { Spacer(Modifier.weight(1f)) }
                         }
                     }
                 }
-            }
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-
-            // Action area
-            if (selectedPlatform.name == "Linux") {
-                LinuxDistributionButtons(
-                    repo = selectedPlatform.repo,
-                    linuxDistros = linuxDistros,
-                    s = s,
-                    onOpenHelp = onOpenHelp
-                )
-            } else {
-                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                    val isMobile = maxWidth < 600.dp
+                if (selectedPlatform.name == "Linux") {
+                    LinuxDistributionButtons(repo = selectedPlatform.repo, linuxDistros = linuxDistros, s = s, onOpenHelp = onOpenHelp)
+                } else {
                     val isGithub = selectedPlatform.name == "GitHub"
-
-                    if (isMobile) {
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
+                    Surface(shape = RoundedCornerShape(28.dp), color = cs.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(if (narrow) 16.dp else 22.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            Text(selectedPlatform.details, style = MaterialTheme.typography.bodyLarge, color = cs.onSurfaceVariant)
                             DownloadButton(selectedPlatform, isGithub, s)
-                            if (selectedPlatform.name != "Android") {
-                                AlternativeDownloads(selectedPlatform, s)
-                            }
-                            Text(
-                                text = selectedPlatform.details,
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    } else {
-                        // Desktop Mode: We put the other versions BELOW, so they have full width
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(16.dp),
-                            horizontalAlignment = Alignment.Start
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(24.dp)
-                            ) {
-                                DownloadButton(selectedPlatform, isGithub, s)
-                                Text(
-                                    text = selectedPlatform.details,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            if (selectedPlatform.name != "Android") {
-                                AlternativeDownloads(selectedPlatform, s)
-                            }
+                            if (selectedPlatform.name != "Android") AlternativeDownloads(selectedPlatform, s)
                         }
                     }
                 }
             }
         }
     }
+}
+
+private data class SegmentPosition(val first: Boolean, val last: Boolean, val top: Boolean, val bottom: Boolean)
+
+/**
+ * One segment of the connected platform group: big outer corners, tight inner ones, and the checked
+ * segment morphs to fully rounded like M3 Expressive's connected toggle buttons.
+ */
+@Composable
+private fun PlatformTile(platform: PlatformInfo, isSelected: Boolean, narrow: Boolean, position: SegmentPosition, modifier: Modifier, onClick: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    val bg by androidx.compose.animation.animateColorAsState(if (isSelected) cs.primary else cs.surfaceContainerHigh)
+    val fg by androidx.compose.animation.animateColorAsState(if (isSelected) cs.onPrimary else cs.onSurface)
+    val outer = if (narrow) 26.dp else 32.dp
+    val inner = 8.dp
+    val spec = androidx.compose.animation.core.spring<androidx.compose.ui.unit.Dp>(dampingRatio = 0.6f, stiffness = 500f)
+    fun corner(isOuter: Boolean) = if (isSelected || isOuter) outer else inner
+    val ts by androidx.compose.animation.core.animateDpAsState(corner(position.first && position.top), spec)
+    val te by androidx.compose.animation.core.animateDpAsState(corner(position.last && position.top), spec)
+    val bs by androidx.compose.animation.core.animateDpAsState(corner(position.first && position.bottom), spec)
+    val be by androidx.compose.animation.core.animateDpAsState(corner(position.last && position.bottom), spec)
+    val source = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(topStart = ts, topEnd = te, bottomStart = bs, bottomEnd = be),
+        color = bg,
+        interactionSource = source,
+        modifier = modifier.height(if (narrow) 88.dp else 104.dp).springyPress(source, 0.96f, 1f),
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center, modifier = Modifier.fillMaxSize()) {
+            if (platform.svgUrl != null) {
+                HtmlImage(src = platform.svgUrl, description = platform.name, corner = 0.dp, fit = MediaFit.Contain, modifier = Modifier.size(if (narrow) 28.dp else 34.dp))
+            } else if (platform.iconVector != null) {
+                Icon(platform.iconVector, platform.name, modifier = Modifier.size(if (narrow) 28.dp else 34.dp), tint = fg)
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(platform.name, style = MaterialTheme.typography.titleSmall, color = fg, maxLines = 1)
+        }
     }
 }
 
@@ -738,7 +702,7 @@ private fun buildLinuxDistros(s: DownloadStrings): List<LinuxDistro> = listOf(
         id = "nixos",
         name = "NixOS",
         derivatives = s.nixDerivatives,
-        svgUrl = "svg/nixos.svg",
+        svgUrl = "svg/nixos-snowflake.svg",
         packageBadge = "Flake",
         downloadOptions = emptyList(),
         command = "nix run github:alan7383/KittyTuneDesktop",
@@ -773,107 +737,48 @@ private fun LinuxDistributionButtons(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Column(Modifier.padding(top = 4.dp, start = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
-                text = s.supportedLinuxDistros,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
+                text = s.supportedLinuxDistros.trimEnd(':', ' '),
+                style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
                 text = s.clickHelpForInstructions,
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            linuxDistros.forEach { distro ->
-                SplitButtonLayout(
-                    leadingButton = {
-                        SplitButtonDefaults.LeadingButton(
-                            onClick = {
-                                if (distro.id == "nixos") {
-                                    copyToClipboardJs("nix run github:alan7383/KittyTuneDesktop")
-                                    copiedNix = true
-                                } else {
-                                    val opt = distro.downloadOptions.find {
-                                        if (isArm) it.arch.contains("arm") else it.arch.contains("x86")
-                                    } ?: distro.downloadOptions.firstOrNull()
-                                    if (opt != null) {
-                                        downloadLinuxReleaseJs(repo, opt.fileExtension, opt.arch)
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val cols = when { maxWidth >= 980.dp -> 5; maxWidth >= 700.dp -> 3; maxWidth >= 420.dp -> 2; else -> 1 }
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                linuxDistros.chunked(cols).forEach { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        row.forEach { distro ->
+                            DistroCard(
+                                distro = distro,
+                                badge = if (distro.id == "nixos" && copiedNix) s.copiedBang else distro.packageBadge,
+                                helpLabel = s.instructionsFor(distro.name),
+                                actionLabel = if (distro.id == "nixos") s.copy else s.downloadPackage("").trim(),
+                                modifier = Modifier.weight(1f),
+                                onDownload = {
+                                    if (distro.id == "nixos") {
+                                        copyToClipboardJs("nix run github:alan7383/KittyTuneDesktop")
+                                        copiedNix = true
                                     } else {
-                                        onOpenHelp(distro)
+                                        val opt = distro.downloadOptions.find {
+                                            if (isArm) it.arch.contains("arm") else it.arch.contains("x86")
+                                        } ?: distro.downloadOptions.firstOrNull()
+                                        if (opt != null) downloadLinuxReleaseJs(repo, opt.fileExtension, opt.arch) else onOpenHelp(distro)
                                     }
-                                }
-                            },
-                            modifier = Modifier.height(52.dp),
-                            shapes = SplitButtonDefaults.leadingButtonShapesFor(52.dp),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                if (distro.secondarySvgUrl != null) {
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(2.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(modifier = Modifier.size(20.dp)) {
-                                            HtmlImage(src = distro.svgUrl, description = distro.name, corner = 0.dp, fit = MediaFit.Contain, modifier = Modifier.fillMaxSize())
-                                        }
-                                        Box(modifier = Modifier.size(20.dp)) {
-                                            HtmlImage(src = distro.secondarySvgUrl, description = distro.name, corner = 0.dp, fit = MediaFit.Contain, modifier = Modifier.fillMaxSize())
-                                        }
-                                    }
-                                } else {
-                                    Box(modifier = Modifier.size(22.dp)) {
-                                        HtmlImage(src = distro.svgUrl, description = distro.name, corner = 0.dp, fit = MediaFit.Contain, modifier = Modifier.fillMaxSize())
-                                    }
-                                }
-
-                                Column {
-                                    Text(
-                                        text = distro.name,
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = if (distro.id == "nixos" && copiedNix) s.copiedBang else distro.packageBadge,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
-                                    )
-                                }
-                            }
-                        }
-                    },
-                    trailingButton = {
-                        SplitButtonDefaults.TrailingButton(
-                            checked = false,
-                            onCheckedChange = { onOpenHelp(distro) },
-                            modifier = Modifier.height(52.dp),
-                            shapes = SplitButtonDefaults.trailingButtonShapesFor(52.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.HelpOutline,
-                                contentDescription = s.instructionsFor(distro.name),
-                                modifier = Modifier.size(20.dp)
+                                },
+                                onHelp = { onOpenHelp(distro) },
                             )
                         }
+                        repeat(cols - row.size) { Spacer(Modifier.weight(1f)) }
                     }
-                )
+                }
             }
         }
 
@@ -882,6 +787,68 @@ private fun LinuxDistributionButtons(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+/** A distro: its logo on a tonal plate, the package format, and a connected [download | ?] pair. */
+@Composable
+private fun DistroCard(
+    distro: LinuxDistro,
+    badge: String,
+    helpLabel: String,
+    actionLabel: String,
+    modifier: Modifier,
+    onDownload: () -> Unit,
+    onHelp: () -> Unit,
+) {
+    val cs = MaterialTheme.colorScheme
+    val isNix = distro.id == "nixos"
+    Surface(shape = RoundedCornerShape(28.dp), color = cs.surfaceContainer, modifier = modifier) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(Modifier.size(52.dp).clip(RoundedCornerShape(18.dp)).background(cs.surfaceContainerHighest), contentAlignment = Alignment.Center) {
+                    if (distro.secondarySvgUrl != null) {
+                        Box(Modifier.size(40.dp)) {
+                            HtmlImage(src = distro.svgUrl, description = distro.name, corner = 0.dp, fit = MediaFit.Contain, modifier = Modifier.size(24.dp).align(Alignment.TopStart))
+                            HtmlImage(src = distro.secondarySvgUrl, description = distro.name, corner = 0.dp, fit = MediaFit.Contain, modifier = Modifier.size(24.dp).align(Alignment.BottomEnd))
+                        }
+                    } else {
+                        HtmlImage(src = distro.svgUrl, description = distro.name, corner = 0.dp, fit = MediaFit.Contain, modifier = Modifier.size(30.dp))
+                    }
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(distro.name, style = MaterialTheme.typography.titleSmall, color = cs.onSurface, maxLines = 2)
+                    Surface(shape = CircleShape, color = cs.secondaryContainer) {
+                        Text(badge, style = MaterialTheme.typography.labelMedium, color = cs.onSecondaryContainer, maxLines = 1, modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp))
+                    }
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)) {
+                Button(
+                    onClick = onDownload,
+                    shapes = ButtonDefaults.shapes(
+                        shape = RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp, topEnd = 6.dp, bottomEnd = 6.dp),
+                        pressedShape = RoundedCornerShape(12.dp),
+                    ),
+                    contentPadding = PaddingValues(horizontal = 12.dp),
+                    modifier = Modifier.weight(1f).height(44.dp),
+                ) {
+                    Icon(if (isNix) Icons.Filled.ContentCopy else Icons.Filled.Download, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(actionLabel, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                }
+                FilledTonalIconButton(
+                    onClick = onHelp,
+                    shapes = IconButtonDefaults.shapes(
+                        shape = RoundedCornerShape(topStart = 6.dp, bottomStart = 6.dp, topEnd = 20.dp, bottomEnd = 20.dp),
+                        pressedShape = RoundedCornerShape(12.dp),
+                    ),
+                    modifier = Modifier.size(width = 48.dp, height = 44.dp),
+                ) {
+                    Icon(Icons.Filled.HelpOutline, helpLabel, modifier = Modifier.size(20.dp))
+                }
+            }
+        }
     }
 }
 
@@ -1273,13 +1240,7 @@ private fun ReleaseItem(release: ReleaseInfo) {
         }
         
         val bodyContent = @Composable { modifier: Modifier ->
-            Text(
-                text = release.body,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                lineHeight = 22.sp,
-                modifier = modifier
-            )
+            ReleaseNotesBody(release.body, modifier)
         }
 
         if (maxWidth < 620.dp) {
@@ -1296,6 +1257,38 @@ private fun ReleaseItem(release: ReleaseInfo) {
                 Box(modifier = Modifier.weight(1f).heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
                     bodyContent(Modifier.fillMaxWidth())
                 }
+            }
+        }
+    }
+}
+
+private val commitLinkRegex = Regex("""\s*\(\[[0-9a-f]{6,40}]\([^)]*\)\)""")
+private val mdLinkRegex = Regex("""\[([^\]]+)]\([^)]*\)""")
+
+/** Renders GitHub release markdown as headed sections with bullet rows (commit links stripped). */
+@Composable
+private fun ReleaseNotesBody(body: String, modifier: Modifier = Modifier) {
+    val cs = MaterialTheme.colorScheme
+    val lines = remember(body) {
+        body.lines().map { it.trimEnd() }.filter { it.isNotBlank() }.map { line ->
+            line.replace(commitLinkRegex, "").replace(mdLinkRegex, "$1").replace("**", "").replace("`", "")
+        }
+    }
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        lines.forEach { line ->
+            val t = line.trimStart()
+            when {
+                t.startsWith("#") -> Text(
+                    t.trimStart('#').trim(),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = cs.primary,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+                t.startsWith("* ") || t.startsWith("- ") -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Box(Modifier.padding(top = 8.dp).size(6.dp).clip(androidx.compose.foundation.shape.CircleShape).background(cs.tertiary))
+                    Text(t.drop(2), style = MaterialTheme.typography.bodyMedium, color = cs.onSurface)
+                }
+                else -> Text(t, style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
             }
         }
     }
