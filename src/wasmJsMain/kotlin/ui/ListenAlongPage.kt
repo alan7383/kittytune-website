@@ -262,7 +262,7 @@ fun ListenAlongPage(
                                 joinAttempted = joinAttempted,
                                 onJoinInApp = {
                                     joinAttempted = true
-                                    triggerAppDeepLinkJs(TogetherWebLinks.appDeepLink(normalizedCode, autoJoin = true))
+                                    triggerAppDeepLinkJs(TogetherWebLinks.appDeepLink(normalizedCode))
                                 },
                                 onCopyCode = {
                                     copyTextWebJs(formattedCode)
@@ -308,7 +308,7 @@ fun ListenAlongPage(
                                     joinAttempted = joinAttempted,
                                     onJoinInApp = {
                                         joinAttempted = true
-                                        triggerAppDeepLinkJs(TogetherWebLinks.appDeepLink(normalizedCode, autoJoin = true))
+                                        triggerAppDeepLinkJs(TogetherWebLinks.appDeepLink(normalizedCode))
                                     },
                                     onCopyCode = {
                                         copyTextWebJs(formattedCode)

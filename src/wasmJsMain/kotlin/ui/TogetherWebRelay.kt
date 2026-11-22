@@ -116,10 +116,7 @@ object TogetherWebLinks {
         return norm.takeIf { it.length == CODE_LENGTH && trimmed.length <= 14 }
     }
 
-    fun appDeepLink(code: String, autoJoin: Boolean = true): String {
-        val suffix = if (autoJoin) "?join=1" else ""
-        return "kittytune://together/${displayCode(code)}$suffix"
-    }
+    fun appDeepLink(code: String): String = "kittytune://together/${displayCode(code)}"
 
     fun webShareUrl(baseOriginAndPath: String, code: String): String =
         "${baseOriginAndPath.trimEnd('/')}/?together=${displayCode(code)}"
