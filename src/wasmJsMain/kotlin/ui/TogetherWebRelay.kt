@@ -80,6 +80,10 @@ data class TogetherWebSessionState(
 
 object TogetherWebLinks {
     const val CODE_LENGTH = 8
+    private val shortInviteRegex = Regex(
+        """https://kittytune\.pages\.dev/([A-Za-z0-9]{4}-?[A-Za-z0-9]{4})/?(?=$|[?#\s<>)\].,!])""",
+        RegexOption.IGNORE_CASE,
+    )
 
     fun normalizeCode(raw: String): String =
         raw.uppercase().filter { it in 'A'..'Z' || it in '0'..'9' }
@@ -88,6 +92,8 @@ object TogetherWebLinks {
         normalizeCode(code).take(CODE_LENGTH).chunked(4).joinToString("-")
 
     fun extractCodeFromUrl(fullUrlOrQuery: String): String? {
+        shortInviteRegex.find(fullUrlOrQuery)?.groupValues?.getOrNull(1)?.let { return normalizeCode(it) }
+
         val queryMatch = Regex(
             """[?&#](?:together|listen_along|room)=([A-Za-z0-9-]{8,12})""",
             RegexOption.IGNORE_CASE,

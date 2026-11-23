@@ -14,9 +14,9 @@ and rendering failures.
 Short links use `https://kittytune.pages.dev/XNW9-BMKZ`. The Pages function forwards invites
 and image requests to the same Worker through a service binding.
 
-The apps' `TogetherLinks.inviteUrl` uses
-`https://kittytune-invite.kt-net.workers.dev/?together=XNW9-BMKZ&from=<name>`.
-The `/j/<code>`, `/join/<code>`, and `/together/<code>` paths also accept invites.
+The apps' `TogetherLinks.inviteUrl` can include the sender's display name as `?from=<name>`.
+The legacy `?together=<code>` format and the `/j/<code>`, `/join/<code>`, and
+`/together/<code>` paths also accept invites.
 
 ## Redeploy after a change
 
