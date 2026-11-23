@@ -57,3 +57,6 @@ arch_build/
 
 # Perf benchmark scripts are part of the repo
 !tools/perf/*.py
+
+# Local agent notes
+.agents/

@@ -119,7 +119,8 @@ object TogetherWebLinks {
     fun appDeepLink(code: String): String = "kittytune://together/${displayCode(code)}"
 
     fun webShareUrl(baseOriginAndPath: String, code: String): String =
-        "${baseOriginAndPath.trimEnd('/')}/?together=${displayCode(code)}"
+        // The invite page: link previews show its "you're invited" card, and it forwards to the session.
+        "${baseOriginAndPath.trimEnd('/')}/together/?together=${displayCode(code)}"
 }
 
 internal fun sanitizeTogetherAvatarUrl(raw: String?): String? {
