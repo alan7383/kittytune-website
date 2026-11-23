@@ -1,30 +1,35 @@
-# Personal invite previews
+# Listen Together invite previews
 
-Invite links normally point to `together/` on GitHub Pages, whose preview says
-"You're invited to a listening party" for everyone. GitHub Pages cannot change that card per link
-(previews never run scripts), so this Cloudflare Worker serves a card that names the host and the code:
+The Cloudflare Worker sends browsers to the session on GitHub Pages. When a link preview service
+requests the invite, the Worker uses the invite code to read the room's playback state from the
+same MQTT brokers as the apps. The preview shows the host, track, artwork, progress, and
+listener count. It displays up to four avatars.
 
-> **🎧 Alan invited you to a listening party**
-> Session XNW9-BMKZ is live on KittyTune. Tap to join…
-
-Bots that build previews (Discord, WhatsApp, Telegram, Slack, X…) get that card; people are redirected
-to the session on the site. Nothing is stored or logged.
+Browser Rendering creates a PNG from a signed snapshot in the image URL. Cloudflare caches the
+image for repeated requests. The banner at `together/invite.png` covers unavailable sessions
+and rendering failures.
 
 ## Where it runs
 
-Deployed at **https://kittytune-invite.kt-net.workers.dev** (Cloudflare Workers, free plan). The apps'
-`TogetherLinks.inviteUrl` builds `https://kittytune-invite.kt-net.workers.dev/?together=XNW9-BMKZ&from=<name>`,
-the same `?together=` shape older versions already parse.
+The apps' `TogetherLinks.inviteUrl` uses
+`https://kittytune-invite.kt-net.workers.dev/?together=XNW9-BMKZ&from=<name>`.
+The `/j/<code>`, `/join/<code>`, and `/together/<code>` paths also accept invites.
 
 ## Redeploy after a change
 
 ```sh
 cd invite-worker
-npx wrangler login   # once per machine
-npx wrangler deploy
+npm ci
+npx wrangler login
+npm run deploy
 ```
 
+For a new Worker, set `CARD_SECRET` to a random secret with `npx wrangler secret put CARD_SECRET`.
+The `BROWSER` binding is defined in `wrangler.toml`.
+
 ## Check a preview
+
+Use the code of an active room to inspect the personalized Open Graph tags and image URL.
 
 ```sh
 curl -A Discordbot "https://kittytune-invite.kt-net.workers.dev/?together=XNW9-BMKZ&from=Alan"

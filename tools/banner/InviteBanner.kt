@@ -1,31 +1,27 @@
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class, androidx.compose.ui.text.ExperimentalTextApi::class)
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowForward
-import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Headphones
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.*
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
@@ -37,9 +33,12 @@ import com.materialkolor.PaletteStyle
 import org.jetbrains.skia.EncodedImageFormat
 import org.junit.Test
 import java.io.File
-import kotlin.math.PI
-import kotlin.math.sin
 
+/**
+ * The Listen Together invite banner (1200x630, the size link previews ask for), built like the website's
+ * hero: the site's own dark scheme and type, real Material 3 components (Surface, Button with expressive
+ * shapes), and its stage of a Cookie12 and a Sunny behind the real app.
+ */
 class TmpInviteBannerRender {
     private val site = File("C:/Users/alan/Projects/kittytune-website")
     private val fontBytes = File(site, "src/wasmJsMain/composeResources/font/google_sans_flex.ttf").readBytes()
@@ -51,23 +50,34 @@ class TmpInviteBannerRender {
                 FontVariation.Setting("ROND", rond), FontVariation.Setting("opsz", opsz)))
         })
 
-    private val display = flex("display", 100f, 72f)
-    private val rounded = flex("rounded", 100f, 18f)
-    private val text = flex("text", 0f, 14f)
+    /** The website's expressive type scale (theme/Theme.kt). */
+    private fun typography(): Typography {
+        val display = flex("display", 100f, 72f)
+        val rounded = flex("rounded", 100f, 18f)
+        val text = flex("text", 0f, 14f)
+        val d = Typography()
+        return Typography(
+            displayLarge = d.displayLarge.copy(fontFamily = display, fontWeight = FontWeight.W900, fontSize = 64.sp, lineHeight = 68.sp, letterSpacing = (-1.5).sp),
+            titleLarge = d.titleLarge.copy(fontFamily = rounded, fontWeight = FontWeight.W700),
+            titleMedium = d.titleMedium.copy(fontFamily = rounded, fontWeight = FontWeight.W700),
+            bodyLarge = d.bodyLarge.copy(fontFamily = text, lineHeight = 26.sp),
+            labelLarge = d.labelLarge.copy(fontFamily = rounded, fontWeight = FontWeight.W700),
+        )
+    }
 
     private fun img(path: String): ImageBitmap =
         org.jetbrains.skia.Image.makeFromEncoded(File(site, path).readBytes()).toComposeImageBitmap()
 
     @Test fun render() {
+        // Exactly the site's default scheme: seed #1A6DFF, Vibrant, dark, 2025 spec.
         val scheme = com.materialkolor.dynamicColorScheme(
-            seedColor = Color(0xFF1A6DFF), isDark = true, isAmoled = false, style = PaletteStyle.Vibrant,
-            specVersion = com.materialkolor.dynamiccolor.ColorSpec.SpecVersion.SPEC_2025,
+            seedColor = androidx.compose.ui.graphics.Color(0xFF1A6DFF), isDark = true, isAmoled = false,
+            style = PaletteStyle.Vibrant, specVersion = com.materialkolor.dynamiccolor.ColorSpec.SpecVersion.SPEC_2025,
         )
-        val logo = img("tools/assets/kitty_logo.png")
-        val cover = img("tools/assets/cover_black_hole.png")
+        val phone = img("src/wasmJsMain/composeResources/drawable/hero_player.webp")
         val scene = ImageComposeScene(1200, 630, Density(1f)) {
             CompositionLocalProvider(LocalDensity provides Density(1f)) {
-                MaterialTheme(colorScheme = scheme) { Banner(logo, cover) }
+                MaterialTheme(colorScheme = scheme, typography = typography()) { Banner(phone) }
             }
         }
         val out = File(site, "src/wasmJsMain/resources/together/invite.png")
@@ -76,148 +86,76 @@ class TmpInviteBannerRender {
         println("BANNER ${out.length()} bytes")
     }
 
-    @Composable private fun Banner(logo: ImageBitmap, cover: ImageBitmap) {
-        val s = MaterialTheme.colorScheme
-        Box(Modifier.fillMaxSize().background(s.surfaceContainerLowest)) {
-            // Soft light pools, like the site's hero.
-            Canvas(Modifier.fillMaxSize()) {
-                drawCircle(Brush.radialGradient(listOf(s.primary.copy(alpha = 0.30f), Color.Transparent), Offset(250f, 120f), 520f), 520f, Offset(250f, 120f))
-                drawCircle(Brush.radialGradient(listOf(s.tertiary.copy(alpha = 0.22f), Color.Transparent), Offset(1000f, 560f), 520f), 520f, Offset(1000f, 560f))
-            }
-            // Big expressive shapes bleeding off the edges.
-            Box(Modifier.offset((-90).dp, 430.dp).size(300.dp).rotate(18f).clip(MaterialShapes.SoftBurst.toShape()).background(s.primaryContainer.copy(alpha = 0.35f)))
-            Box(Modifier.offset(560.dp, (-120).dp).size(220.dp).rotate(-12f).clip(MaterialShapes.Cookie9Sided.toShape()).background(s.tertiaryContainer.copy(alpha = 0.16f)))
+    @Composable private fun Banner(phone: ImageBitmap) {
+        val cs = MaterialTheme.colorScheme
+        val type = MaterialTheme.typography
+        Surface(Modifier.fillMaxSize(), color = cs.surface) {
+            Box(Modifier.fillMaxSize()) {
+                Stage(phone, Modifier.align(Alignment.CenterEnd).offset(x = 40.dp).width(560.dp).fillMaxHeight())
 
-            Row(Modifier.fillMaxSize().padding(horizontal = 60.dp, vertical = 54.dp)) {
-                Column(Modifier.weight(1f).fillMaxHeight()) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(56.dp).clip(MaterialShapes.Cookie9Sided.toShape()).background(s.primaryContainer), contentAlignment = Alignment.Center) {
-                            Image(logo, null, Modifier.size(40.dp), contentScale = ContentScale.Fit, filterQuality = FilterQuality.None)
-                        }
-                        Spacer(Modifier.width(14.dp))
-                        Text("KittyTune", style = TextStyle(fontFamily = display, fontWeight = FontWeight.W800, fontSize = 30.sp, color = s.onSurface))
-                        Spacer(Modifier.width(14.dp))
-                        Pill(s.tertiaryContainer) {
-                            Icon(Icons.Rounded.Headphones, null, Modifier.size(16.dp), tint = s.onTertiaryContainer)
-                            Spacer(Modifier.width(6.dp))
-                            Text("LISTEN TOGETHER", style = TextStyle(fontFamily = rounded, fontWeight = FontWeight.W700, fontSize = 13.sp, letterSpacing = 1.2.sp, color = s.onTertiaryContainer))
+                Column(
+                    Modifier.align(Alignment.CenterStart).padding(start = 72.dp).width(600.dp),
+                    verticalArrangement = Arrangement.spacedBy(28.dp),
+                ) {
+                    // The site's eyebrow pill.
+                    Surface(shape = CircleShape, color = cs.secondaryContainer) {
+                        Row(Modifier.padding(start = 12.dp, end = 18.dp, top = 9.dp, bottom = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(Icons.Rounded.Headphones, null, tint = cs.onSecondaryContainer, modifier = Modifier.size(20.dp))
+                            Text("KittyTune Together", style = type.labelLarge.copy(fontSize = 16.sp), color = cs.onSecondaryContainer)
                         }
                     }
-                    Spacer(Modifier.height(34.dp))
-                    Text("You're invited", style = TextStyle(fontFamily = display, fontWeight = FontWeight.W900, fontSize = 76.sp, lineHeight = 78.sp, letterSpacing = (-2).sp, color = s.onSurface))
-                    Text("to a listening party",
-                        style = TextStyle(fontFamily = display, fontWeight = FontWeight.W900, fontSize = 58.sp, lineHeight = 66.sp, letterSpacing = (-1.5).sp,
-                            brush = Brush.linearGradient(listOf(s.primary, s.tertiary))))
-                    Spacer(Modifier.height(18.dp))
-                    Text("Hop into a live session: same song, same second,\nlyrics in sync. Right in your browser or the app.",
-                        style = TextStyle(fontFamily = text, fontWeight = FontWeight.W400, fontSize = 21.sp, lineHeight = 30.sp, color = s.onSurfaceVariant))
-                    Spacer(Modifier.height(30.dp))
-                    // The "ticket": live dot, call to action, and the join button.
-                    Row(
-                        Modifier.clip(CircleShape).background(s.surfaceContainerHigh).border(1.dp, s.outlineVariant.copy(alpha = 0.6f), CircleShape)
-                            .padding(start = 22.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                    // The site's hero title: two lines, the second in primary.
+                    Column {
+                        val title = type.displayLarge.copy(fontSize = 92.sp, lineHeight = 94.sp, letterSpacing = (-2.5).sp)
+                        Text("Listen along,", style = title, color = cs.onSurface)
+                        Text("right now.", style = title, color = cs.primary)
+                    }
+                    Text(
+                        "A live session is waiting for you.",
+                        style = type.titleMedium.copy(fontSize = 24.sp, fontWeight = FontWeight.W500, lineHeight = 32.sp),
+                        color = cs.onSurfaceVariant,
+                    )
+                    // A real Material 3 Expressive button, sized like the site's hero CTA.
+                    Button(
+                        onClick = {},
+                        shapes = ButtonDefaults.shapes(),
+                        contentPadding = PaddingValues(horizontal = 32.dp),
+                        modifier = Modifier.height(68.dp),
                     ) {
-                        Box(Modifier.size(12.dp).clip(CircleShape).background(Color(0xFF3DDC97)))
-                        Spacer(Modifier.width(10.dp))
-                        Text("LIVE NOW", style = TextStyle(fontFamily = rounded, fontWeight = FontWeight.W800, fontSize = 15.sp, letterSpacing = 1.sp, color = Color(0xFF3DDC97)))
-                        Spacer(Modifier.width(16.dp))
-                        Box(Modifier.width(1.dp).height(28.dp).background(s.outlineVariant))
-                        Spacer(Modifier.width(16.dp))
-                        Text("Open the link to join", style = TextStyle(fontFamily = rounded, fontWeight = FontWeight.W600, fontSize = 18.sp, color = s.onSurface))
-                        Spacer(Modifier.width(18.dp))
-                        Row(Modifier.clip(CircleShape).background(s.primary).padding(horizontal = 22.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("Join", style = TextStyle(fontFamily = rounded, fontWeight = FontWeight.W800, fontSize = 18.sp, color = s.onPrimary))
-                            Spacer(Modifier.width(8.dp))
-                            Icon(Icons.AutoMirrored.Rounded.ArrowForward, null, Modifier.size(20.dp), tint = s.onPrimary)
-                        }
-                    }
-                    Spacer(Modifier.weight(1f))
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Feature(Icons.Rounded.Favorite, "Free & open source")
-                        Feature(Icons.Rounded.Lock, "End-to-end encrypted")
-                        Feature(Icons.Rounded.Devices, "Android · Desktop · Web")
+                        Icon(Icons.Rounded.PlayArrow, null, modifier = Modifier.size(26.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Text("Join the session", style = type.titleMedium.copy(fontSize = 21.sp))
                     }
                 }
-                Spacer(Modifier.width(36.dp))
-                NowPlayingCard(cover)
             }
         }
     }
 
-    @Composable private fun Pill(color: Color, content: @Composable RowScope.() -> Unit) {
-        Row(Modifier.clip(CircleShape).background(color).padding(horizontal = 14.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically, content = content)
-    }
-
-    @Composable private fun Feature(icon: ImageVector, label: String) {
-        val s = MaterialTheme.colorScheme
-        Row(Modifier.clip(CircleShape).background(s.surfaceContainer).padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, Modifier.size(16.dp), tint = s.primary)
-            Spacer(Modifier.width(7.dp))
-            Text(label, style = TextStyle(fontFamily = rounded, fontWeight = FontWeight.W600, fontSize = 14.sp, color = s.onSurfaceVariant))
+    /** The home page's hero stage: a Cookie12 in primaryContainer, a Sunny in tertiaryContainer, the real app. */
+    @Composable private fun Stage(phone: ImageBitmap, modifier: Modifier) {
+        val cs = MaterialTheme.colorScheme
+        Box(modifier, contentAlignment = Alignment.Center) {
+            Box(Modifier.offset(y = 40.dp).size(520.dp).rotate(12f).clip(MaterialShapes.Cookie12Sided.toShape()).background(cs.primaryContainer))
+            Box(Modifier.align(Alignment.TopEnd).offset(x = (-70).dp, y = 34.dp).size(118.dp).rotate(-10f)
+                .clip(MaterialShapes.Sunny.toShape()).background(cs.tertiaryContainer))
+            // The phone rises from the bottom edge, like a phone held up to show a friend.
+            Image(phone, "KittyTune now playing", Modifier.offset(x = (-10).dp, y = 150.dp).height(760.dp), contentScale = ContentScale.FillHeight)
+            FloatingBadge("Live", Icons.Rounded.GraphicEq, Modifier.align(Alignment.CenterStart).offset(x = 6.dp, y = (-96).dp))
+            FloatingBadge("In sync", Icons.Rounded.Sync, Modifier.align(Alignment.CenterEnd).offset(x = (-58).dp, y = 70.dp))
         }
     }
 
-    @Composable private fun NowPlayingCard(cover: ImageBitmap) {
-        val s = MaterialTheme.colorScheme
-        Column(
-            Modifier.width(400.dp).fillMaxHeight().clip(RoundedCornerShape(40.dp)).background(s.surfaceContainer)
-                .border(1.dp, s.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(40.dp)).padding(26.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(34.dp).clip(MaterialShapes.Cookie6Sided.toShape()).background(s.primary), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Rounded.Star, null, Modifier.size(18.dp), tint = s.onPrimary)
+    /** The site's floating badge: a pill Surface with a Cookie9 icon. */
+    @Composable private fun FloatingBadge(text: String, icon: ImageVector, modifier: Modifier) {
+        val cs = MaterialTheme.colorScheme
+        Surface(modifier, shape = CircleShape, color = cs.surfaceContainerHighest, shadowElevation = 6.dp) {
+            Row(Modifier.padding(start = 9.dp, end = 18.dp, top = 9.dp, bottom = 9.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(Modifier.size(34.dp).clip(MaterialShapes.Cookie9Sided.toShape()).background(cs.primary), contentAlignment = Alignment.Center) {
+                    Icon(icon, null, tint = cs.onPrimary, modifier = Modifier.size(20.dp))
                 }
-                Spacer(Modifier.width(10.dp))
-                Text("Host is playing", style = TextStyle(fontFamily = rounded, fontWeight = FontWeight.W700, fontSize = 16.sp, color = s.onSurface))
-                Spacer(Modifier.weight(1f))
-                Pill(Color(0xFF3DDC97).copy(alpha = 0.16f)) {
-                    Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF3DDC97)))
-                    Spacer(Modifier.width(6.dp))
-                    Text("LIVE", style = TextStyle(fontFamily = rounded, fontWeight = FontWeight.W800, fontSize = 12.sp, letterSpacing = 1.sp, color = Color(0xFF3DDC97)))
-                }
-            }
-            Spacer(Modifier.height(18.dp))
-            Box(Modifier.size(230.dp), contentAlignment = Alignment.Center) {
-                Box(Modifier.fillMaxSize().rotate(14f).clip(MaterialShapes.SoftBurst.toShape()).background(Brush.linearGradient(listOf(s.primary, s.tertiary))).alpha(0.9f))
-                Image(cover, null, Modifier.size(186.dp).clip(MaterialShapes.Cookie12Sided.toShape()), contentScale = ContentScale.Crop)
-            }
-            Spacer(Modifier.height(16.dp))
-            Text("Black Hole", style = TextStyle(fontFamily = display, fontWeight = FontWeight.W800, fontSize = 26.sp, color = s.onSurface))
-            Text("Playing for everyone · Lossless", style = TextStyle(fontFamily = text, fontWeight = FontWeight.W500, fontSize = 15.sp, color = s.onSurfaceVariant))
-            Spacer(Modifier.height(16.dp))
-            // The expressive wavy progress line of the player.
-            Canvas(Modifier.fillMaxWidth().height(22.dp)) {
-                val played = size.width * 0.46f
-                val mid = size.height / 2
-                val wave = Path().apply {
-                    moveTo(0f, mid)
-                    var x = 0f
-                    while (x <= played) { lineTo(x, mid + sin(x / 34f * 2 * PI).toFloat() * 5f); x += 2f }
-                }
-                drawPath(wave, s.primary, style = Stroke(width = 6f, cap = StrokeCap.Round))
-                drawLine(s.surfaceContainerHighest, Offset(played + 12f, mid), Offset(size.width, mid), strokeWidth = 6f, cap = StrokeCap.Round)
-                drawCircle(s.primary, 9f, Offset(played + 2f, mid))
-            }
-            Spacer(Modifier.weight(1f))
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                val avatars = listOf(s.primary, s.tertiary, s.secondary, s.error)
-                Box(Modifier.height(36.dp).width((36 + 24 * 3).dp)) {
-                    avatars.forEachIndexed { i, c ->
-                        Box(Modifier.offset((i * 24).dp).size(36.dp).clip(CircleShape).background(s.surfaceContainer).padding(3.dp).clip(CircleShape).background(c),
-                            contentAlignment = Alignment.Center) {
-                            Text(listOf("A", "M", "K", "J")[i], style = TextStyle(fontFamily = rounded, fontWeight = FontWeight.W800, fontSize = 14.sp, color = s.surface))
-                        }
-                    }
-                }
-                Spacer(Modifier.width(12.dp))
-                Column {
-                    Text("4 listening", style = TextStyle(fontFamily = rounded, fontWeight = FontWeight.W700, fontSize = 16.sp, color = s.onSurface))
-                    Text("in perfect sync", style = TextStyle(fontFamily = text, fontSize = 13.sp, color = s.onSurfaceVariant))
-                }
-                Spacer(Modifier.weight(1f))
-                Icon(Icons.Rounded.GraphicEq, null, Modifier.size(30.dp), tint = s.tertiary)
+                Text(text, style = MaterialTheme.typography.labelLarge.copy(fontSize = 18.sp), color = cs.onSurface)
             }
         }
     }

@@ -14,6 +14,7 @@ kotlin-js-store/
 *.png
 !src/main/resources/icons/*.png
 !src/wasmJsMain/resources/media/*.png
+!src/wasmJsMain/resources/together/invite.png
 *.wav
 *.py
 *.ps1
