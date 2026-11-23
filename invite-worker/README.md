@@ -11,6 +11,9 @@ and rendering failures.
 
 ## Where it runs
 
+Short links use `https://kittytune.pages.dev/XNW9-BMKZ`. The Pages function forwards invites
+and image requests to the same Worker through a service binding.
+
 The apps' `TogetherLinks.inviteUrl` uses
 `https://kittytune-invite.kt-net.workers.dev/?together=XNW9-BMKZ&from=<name>`.
 The `/j/<code>`, `/join/<code>`, and `/together/<code>` paths also accept invites.
@@ -27,10 +30,15 @@ npm run deploy
 For a new Worker, set `CARD_SECRET` to a random secret with `npx wrangler secret put CARD_SECRET`.
 The `BROWSER` binding is defined in `wrangler.toml`.
 
+## Deploy the short invite address
+
+From `invite-worker/`, run `npm run deploy:pages`. This deploys `pages/` to the
+existing Cloudflare Pages project named `kittytune`.
+
 ## Check a preview
 
 Use the code of an active room to inspect the personalized Open Graph tags and image URL.
 
 ```sh
-curl -A Discordbot "https://kittytune-invite.kt-net.workers.dev/?together=XNW9-BMKZ&from=Alan"
+curl -A Discordbot "https://kittytune.pages.dev/XNW9-BMKZ"
 ```
