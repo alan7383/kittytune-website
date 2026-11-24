@@ -56,7 +56,7 @@ private fun flexFamily(bytes: ByteArray, tag: String, rond: Float, width: Float,
     FontFamily(
         ws.map { fw ->
             Font(
-                identity = "GoogleSansFlex-$tag-${fw.weight}",
+                identity = "KittyTuneFlex-$tag-${fw.weight}",
                 data = bytes,
                 weight = fw,
                 variationSettings = FontVariation.Settings(
